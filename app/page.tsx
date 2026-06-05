@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useMemo, useCallback, Suspense } from "react";
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { Canvas, useFrame } from "@react-three/fiber";
 import { Stars, useGLTF, useTexture, Environment } from "@react-three/drei";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
@@ -48,7 +48,7 @@ const starVertexShader = `
   void main() {
     vColor = color;
     vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-    gl_PointSize = aSize * (280.0 / -mvPosition.z);
+    gl_PointSize = aSize * (200.0 / -mvPosition.z);
     gl_Position = projectionMatrix * mvPosition;
   }
 `;
@@ -60,13 +60,9 @@ const starFragmentShader = `
     float dist = length(coord);
     if (dist > 0.5) discard;
     float core = smoothstep(0.12, 0.0, dist);
-    float halo = smoothstep(0.5, 0.1, dist) * 0.4;
-    float spike = max(
-      smoothstep(0.48, 0.0, abs(coord.x)) * smoothstep(0.12, 0.0, abs(coord.y)),
-      smoothstep(0.48, 0.0, abs(coord.y)) * smoothstep(0.12, 0.0, abs(coord.x))
-    ) * 0.3;
-    float alpha = core + halo + spike;
-    gl_FragColor = vec4(vColor, alpha * 0.98);
+    float halo = smoothstep(0.5, 0.1, dist) * 0.25;
+    float alpha = core + halo;
+    gl_FragColor = vec4(vColor, alpha * 0.6); // Reduced brightness
   }
 `;
 
@@ -81,16 +77,16 @@ const earthAtmoVertex = `
 const earthAtmoFragment = `
   varying vec3 vNormal;
   void main() {
-    float intensity = pow(0.6 - dot(vNormal, vec3(0, 0, 1.0)), 4.0);
-    gl_FragColor = vec4(0.3, 0.6, 1.0, 1.0) * intensity;
+    float intensity = pow(0.5 - dot(vNormal, vec3(0, 0, 1.0)), 6.0);
+    gl_FragColor = vec4(0.2, 0.45, 0.8, 1.0) * intensity * 0.8;
   }
 `;
 
 // ─── Narration & Stages ──────────────────────────────────────────────────────
 const NARRATIONS = [
   "April 24, 1990. Humanity prepares to open a new window to the cosmos. The Space Shuttle Discovery stands ready, carrying a payload that will change our understanding of the universe forever.",
-  "Leaving the atmosphere behind, Discovery enters low Earth orbit. Down below, the cradle of humanity glows — a fragile blue marble suspended in the infinite dark.",
-  "The payload bay doors open. The Hubble Space Telescope is lifted into the vacuum of space. Its golden solar arrays unfurl, catching the first light of the sun.",
+  "Leaving the atmosphere behind, Discovery enters low Earth orbit at an altitude of 400 kilometers. Down below, the cradle of humanity glows — a fragile blue marble suspended in the infinite dark.",
+  "The payload bay doors open. The Hubble Space Telescope, 13 meters of precision engineering, is lifted into the vacuum of space. Its golden solar arrays unfurl, catching the first light of the sun.",
   "As we peer into its primary mirror, we leave Earth behind. We are about to look deeper into space, and further back in time, than any human has ever looked before.",
   "Welcome to the Deep Space Explorer. The cosmos holds over two trillion galaxies — each containing hundreds of billions of stars. What you see before you is just one. The journey begins now."
 ];
@@ -102,6 +98,14 @@ const STAGE_TITLES = [
   "FIRST LIGHT",
   "THE COSMOS"
 ];
+
+// ─── Constants for Scale (1 unit = 10 meters) ─────────────────────────────────
+const SCALE_FACTOR = 0.1;
+const EARTH_RADIUS = 10000.0; // Massive scale for flat horizon
+const LEO_ALTITUDE = 100.0;  // High orbit relative to massive earth
+const ORBIT_Y = EARTH_RADIUS + LEO_ALTITUDE; // 10100.0
+const SHUTTLE_LENGTH = 3.72; // 37.2m
+const HUBBLE_LENGTH = 1.32;  // 13.2m
 
 // ─── Narration System ────────────────────────────────────────────────────────
 function useNarration(stage: number, muted: boolean) {
@@ -169,30 +173,31 @@ function CinematicCamera({ stage, elapsed }: { stage: number; elapsed: number })
     const ease = 0.015;
     
     if (stage === 0) {
-      // Look up at rocket
-      state.camera.position.lerp(new THREE.Vector3(0, -5 + elapsed * 1.5, 12), ease);
-      state.camera.lookAt(0, elapsed * 2, 0);
+      // Look up at rocket ascending
+      state.camera.position.lerp(new THREE.Vector3(0, ORBIT_Y - 5 + elapsed * 1.5, 6), ease);
+      state.camera.lookAt(0, ORBIT_Y + elapsed * 2, 0);
     } 
     else if (stage === 1) {
-      // Zoom out to reveal Earth, shuttle flies away
-      state.camera.position.lerp(new THREE.Vector3(15, 10, 30), ease);
-      state.camera.lookAt(0, 0, 0);
+      // Zoom out to reveal Massive Earth curvature beneath the shuttle
+      state.camera.position.lerp(new THREE.Vector3(8, ORBIT_Y + 3, 12), ease);
+      state.camera.lookAt(0, ORBIT_Y, 0);
     }
     else if (stage === 2) {
-      // Close up on shuttle payload bay
-      state.camera.position.lerp(new THREE.Vector3(5, 5, 15), ease);
-      state.camera.lookAt(0, 2, 0);
+      // Close up on shuttle payload bay (top view)
+      state.camera.position.lerp(new THREE.Vector3(1.5, ORBIT_Y + 1.5, 3), ease);
+      state.camera.lookAt(0, ORBIT_Y + 0.5, 0);
     }
     else if (stage === 3) {
-      // Dive into the Hubble telescope mirror
+      // Dive EXACTLY into the Hubble telescope mirror aperture
       const diveProg = Math.min(elapsed / 5, 1);
-      state.camera.position.lerp(new THREE.Vector3(0, 2, 10 - diveProg * 9.5), ease * 2);
-      state.camera.lookAt(0, 2, 0);
+      // Assuming Hubble translates to (0, ORBIT_Y + 1, 0)
+      state.camera.position.lerp(new THREE.Vector3(0, ORBIT_Y + 1, 3 - diveProg * 2.8), ease * 2);
+      state.camera.lookAt(0, ORBIT_Y + 1, 0);
     }
     else if (stage === 4) {
-      // Grand Cosmos landing page slow orbit
+      // Grand Cosmos landing page slow orbit, reset altitude to 0 to view galaxy
       const orbit = state.clock.getElapsedTime() * 0.04;
-      state.camera.position.lerp(new THREE.Vector3(Math.sin(orbit) * 3, 0, 15), ease);
+      state.camera.position.lerp(new THREE.Vector3(Math.sin(orbit) * 5, 1, 15), ease);
       state.camera.lookAt(0, 0, 0);
     }
   });
@@ -207,73 +212,64 @@ function SpaceScene({ stage, active }: { stage: number, active: boolean }) {
   const exhaustRef = useRef<THREE.Points>(null);
   const earthGroupRef = useRef<THREE.Group>(null);
 
-  // Try to load models. If they fail or haven't downloaded, we gracefully catch error by not crashing
-  // (In real use, Suspense handles it, but missing files throw errors. We assume the download script got them).
-  const { scene: shuttleModel } = useGLTF("/models/shuttle.glb", true, true, (e) => console.log("Shuttle model fallback"));
-  const { scene: hubbleModel } = useGLTF("/models/hubble.glb", true, true, (e) => console.log("Hubble model fallback"));
+  const { scene: shuttleModel } = useGLTF("/models/shuttle.glb", true, true, (e) => console.log("Shuttle fallback"));
+  const { scene: hubbleModel } = useGLTF("/models/hubble.glb", true, true, (e) => console.log("Hubble fallback"));
   
   const [earthColorMap, earthCloudsMap] = useTexture([
     "/textures/earth_8k.jpg",
     "/textures/earth_clouds.jpg"
   ]);
 
-  // Thrust particle system
-  const PARTICLE_COUNT = 2000;
+  // Thrust particle system scaled down
+  const PARTICLE_COUNT = 1500;
   const [pos, sp, col, sz] = useMemo(() => {
     const p = new Float32Array(PARTICLE_COUNT * 3);
     const s = new Float32Array(PARTICLE_COUNT);
     const c = new Float32Array(PARTICLE_COUNT * 3);
     const z = new Float32Array(PARTICLE_COUNT);
     for (let i = 0; i < PARTICLE_COUNT; i++) {
-      p[i * 3] = (Math.random() - 0.5) * 1.5;
-      p[i * 3 + 1] = -Math.random() * 15;
-      p[i * 3 + 2] = (Math.random() - 0.5) * 1.5;
-      s[i] = 10 + Math.random() * 20;
+      p[i * 3] = (Math.random() - 0.5) * 0.5;
+      p[i * 3 + 1] = -Math.random() * 5;
+      p[i * 3 + 2] = (Math.random() - 0.5) * 0.5;
+      s[i] = 2 + Math.random() * 5;
       
       const rand = Math.random();
-      if(rand < 0.2) { c[i * 3] = 1; c[i * 3 + 1] = 0.9; c[i * 3 + 2] = 0.5; } // bright fire
-      else if(rand < 0.5) { c[i * 3] = 1; c[i * 3 + 1] = 0.5; c[i * 3 + 2] = 0.1; } // orange fire
-      else { c[i * 3] = 0.8; c[i * 3 + 1] = 0.8; c[i * 3 + 2] = 0.8; } // smoke
-      z[i] = 15 + Math.random() * 25;
+      if(rand < 0.2) { c[i * 3] = 1; c[i * 3 + 1] = 0.9; c[i * 3 + 2] = 0.5; } 
+      else if(rand < 0.5) { c[i * 3] = 1; c[i * 3 + 1] = 0.5; c[i * 3 + 2] = 0.1; } 
+      else { c[i * 3] = 0.8; c[i * 3 + 1] = 0.8; c[i * 3 + 2] = 0.8; } 
+      z[i] = 5 + Math.random() * 10;
     }
     return [p, s, c, z];
   }, []);
 
   useFrame((state, delta) => {
-    const t = state.clock.getElapsedTime();
-
-    // Animate Earth rotation
+    // Earth rotates beneath the stationary shuttle to simulate orbit flawlessly
     if (earthGroupRef.current) {
-      earthGroupRef.current.rotation.y += delta * 0.05;
+      earthGroupRef.current.rotation.y += delta * 0.001; // 1000x faster than real orbit, visually pleasing
     }
 
     // Animate Shuttle ascent
     if (shuttleRef.current) {
       if (stage === 0) {
-        shuttleRef.current.position.y += delta * 4;
-        shuttleRef.current.rotation.x = Math.PI / 8; // Tilted for launch
-      } else if (stage === 1) {
-        // Orbiting
-        shuttleRef.current.position.y = 5;
+        // Liftoff phase
+        shuttleRef.current.position.y += delta * 1.5;
+        shuttleRef.current.rotation.x = Math.PI / 8;
+      } else if (stage >= 1) {
+        // Reached orbit, lock position
+        shuttleRef.current.position.lerp(new THREE.Vector3(0, ORBIT_Y, 0), 0.05);
         shuttleRef.current.rotation.x = Math.PI / 2; // Flat in orbit
-        shuttleRef.current.position.x += delta * 2;
-      } else if (stage === 2) {
-        // Hovering for deploy
-        shuttleRef.current.position.lerp(new THREE.Vector3(0, 0, 0), 0.05);
-        shuttleRef.current.rotation.x = Math.PI / 2;
       }
     }
 
-    // Animate Hubble Deploy
+    // Animate Hubble Deploy (moves slowly out of the payload bay)
     if (hubbleRef.current) {
       if (stage === 2) {
-        // Slide out of payload bay
-        hubbleRef.current.position.y += delta * 0.5;
-        hubbleRef.current.rotation.y += delta * 0.2;
+        // Translating OUT of the shuttle bay
+        hubbleRef.current.position.y += delta * 0.1;
+        hubbleRef.current.rotation.y += delta * 0.05;
       } else if (stage === 3) {
-        // Center frame for dive
-        hubbleRef.current.position.lerp(new THREE.Vector3(0, 2, 0), 0.05);
-        // Face camera
+        // Center frame and perfectly align mirror for dive
+        hubbleRef.current.position.lerp(new THREE.Vector3(0, ORBIT_Y + 1, 0), 0.05);
         const targetQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, 0));
         hubbleRef.current.quaternion.slerp(targetQuat, 0.05);
       }
@@ -285,10 +281,10 @@ function SpaceScene({ stage, active }: { stage: number, active: boolean }) {
       const arr = pa.array as Float32Array;
       for (let i = 0; i < PARTICLE_COUNT; i++) {
         arr[i * 3 + 1] -= sp[i] * delta;
-        if (arr[i * 3 + 1] < -20) {
-          arr[i * 3 + 1] = 0; // reset to engine bell
-          arr[i * 3] = (Math.random() - 0.5) * 1.5;
-          arr[i * 3 + 2] = (Math.random() - 0.5) * 1.5;
+        if (arr[i * 3 + 1] < -8) {
+          arr[i * 3 + 1] = 0; 
+          arr[i * 3] = (Math.random() - 0.5) * 0.5;
+          arr[i * 3 + 2] = (Math.random() - 0.5) * 0.5;
         }
       }
       pa.needsUpdate = true;
@@ -299,36 +295,41 @@ function SpaceScene({ stage, active }: { stage: number, active: boolean }) {
 
   return (
     <group>
-      <ambientLight intensity={0.4} />
-      <directionalLight position={[10, 10, 5]} intensity={2.5} castShadow />
+      {/* Space Lighting: Pitch black shadows, intense sun from the side */}
+      <ambientLight intensity={0.05} />
+      <directionalLight position={[1000, 1000, 500]} intensity={4.5} castShadow shadow-mapSize={[2048, 2048]} />
 
-      {/* Earth Component (Visible heavily in Stage 1) */}
-      <group ref={earthGroupRef} position={[0, -40, -40]} visible={stage >= 1 && stage <= 2}>
+      {/* Earth Component (Massive, positioned below) */}
+      <group ref={earthGroupRef} position={[0, 0, 0]} visible={stage >= 1 && stage <= 2}>
         <mesh>
-          <sphereGeometry args={[30, 64, 64]} />
-          <meshStandardMaterial map={earthColorMap} roughness={0.7} />
+          <sphereGeometry args={[EARTH_RADIUS, 128, 128]} />
+          <meshStandardMaterial map={earthColorMap} roughness={0.9} metalness={0.1} />
         </mesh>
         <mesh>
-          <sphereGeometry args={[30.5, 64, 64]} />
-          <meshStandardMaterial map={earthCloudsMap} transparent opacity={0.6} depthWrite={false} />
+          <sphereGeometry args={[EARTH_RADIUS + 0.5, 128, 128]} />
+          <meshStandardMaterial map={earthCloudsMap} transparent opacity={0.4} depthWrite={false} />
         </mesh>
         <mesh>
-          <sphereGeometry args={[31.5, 64, 64]} />
+          <sphereGeometry args={[EARTH_RADIUS + 2.0, 128, 128]} />
           <shaderMaterial vertexShader={earthAtmoVertex} fragmentShader={earthAtmoFragment} transparent blending={THREE.AdditiveBlending} side={THREE.BackSide} />
         </mesh>
       </group>
 
       {/* Shuttle Component */}
-      <group ref={shuttleRef} position={[0, -10, 0]} visible={stage <= 2}>
+      <group ref={shuttleRef} position={[0, ORBIT_Y - 10, 0]} visible={stage <= 2}>
         {shuttleModel ? (
-          <primitive object={shuttleModel} scale={0.5} />
+          <primitive object={shuttleModel} scale={SCALE_FACTOR} />
         ) : (
-          <mesh><boxGeometry args={[2, 6, 2]} /><meshStandardMaterial color="#eeeeee" metalness={0.8} roughness={0.2} /></mesh>
+          <group>
+            {/* Extremely basic geometric shuttle replacement to show exact scale if model fails */}
+            <mesh position={[0, 0, 0]}><cylinderGeometry args={[0.3, 0.4, SHUTTLE_LENGTH, 16]} /><meshStandardMaterial color="#dddddd" /></mesh>
+            <mesh position={[0, SHUTTLE_LENGTH/2, 0]}><coneGeometry args={[0.3, 0.6, 16]} /><meshStandardMaterial color="#222" /></mesh>
+          </group>
         )}
         
         {/* Thrust Exhaust */}
         {stage === 0 && (
-          <points ref={exhaustRef} position={[0, -3, 0]}>
+          <points ref={exhaustRef} position={[0, -SHUTTLE_LENGTH/2, 0]}>
             <bufferGeometry>
               <bufferAttribute attach="attributes-position" args={[pos, 3]} />
               <bufferAttribute attach="attributes-color" args={[col, 3]} />
@@ -340,11 +341,11 @@ function SpaceScene({ stage, active }: { stage: number, active: boolean }) {
       </group>
 
       {/* Hubble Component */}
-      <group ref={hubbleRef} position={[0, 0, 0]} visible={stage >= 2 && stage <= 3}>
+      <group ref={hubbleRef} position={[0, ORBIT_Y, 0]} visible={stage >= 2 && stage <= 3}>
         {hubbleModel ? (
-          <primitive object={hubbleModel} scale={0.8} />
+          <primitive object={hubbleModel} scale={SCALE_FACTOR} />
         ) : (
-          <mesh><cylinderGeometry args={[1, 1, 4, 32]} /><meshStandardMaterial color="#bbccdd" metalness={0.9} roughness={0.1} /></mesh>
+          <mesh><cylinderGeometry args={[0.21, 0.21, HUBBLE_LENGTH, 16]} /><meshStandardMaterial color="#8899aa" metalness={0.9} roughness={0.1} /></mesh>
         )}
       </group>
 
@@ -355,7 +356,7 @@ function SpaceScene({ stage, active }: { stage: number, active: boolean }) {
 // ─── Stage 4: The Grand Cosmos — Spiral Galaxy ────────────────────────────────
 function StageGrandCosmos({ active }: { active: boolean }) {
   const pointsRef = useRef<THREE.Points>(null);
-  const N = 12000;
+  const N = 4000; // Drastically reduced for subtle, un-blinding aesthetic
 
   const [pos, sp, ph, col, sz] = useMemo(() => {
     const positions = new Float32Array(N * 3);
@@ -365,30 +366,26 @@ function StageGrandCosmos({ active }: { active: boolean }) {
     const sizes = new Float32Array(N);
 
     for (let i = 0; i < N; i++) {
-      const r = 0.3 + Math.pow(Math.random(), 1.8) * 24;
-      const numArms = 4;
+      const r = 0.5 + Math.pow(Math.random(), 1.5) * 18;
+      const numArms = 2;
       const arm = i % numArms;
-      const angle = (arm * Math.PI * 2) / numArms + r * 0.52 + (Math.random() - 0.5) * 0.55;
+      const angle = (arm * Math.PI * 2) / numArms + r * 0.6 + (Math.random() - 0.5) * 0.8;
 
       positions[i * 3] = Math.cos(angle) * r;
-      positions[i * 3 + 1] = (Math.random() - 0.5) * 1.2 * (1 - r / 25);
+      positions[i * 3 + 1] = (Math.random() - 0.5) * 0.8 * (1 - r / 20);
       positions[i * 3 + 2] = Math.sin(angle) * r;
 
-      speeds[i] = 0.08 + 1.0 / r;
+      speeds[i] = 0.05 + 0.5 / r;
       phases[i] = Math.random() * Math.PI * 2;
-      sizes[i] = 1.2 + Math.random() * 2.2;
+      sizes[i] = 0.8 + Math.random() * 1.5;
 
-      if (r < 2.5) {
-        colors[i * 3] = 1; colors[i * 3 + 1] = 0.95; colors[i * 3 + 2] = 0.8;
+      // Darker, richer core and faint edges
+      if (r < 3) {
+        colors[i * 3] = 0.8; colors[i * 3 + 1] = 0.6; colors[i * 3 + 2] = 0.4;
       } else if (r < 8) {
-        const f = (r - 2.5) / 5.5;
-        colors[i * 3] = 1 - f * 0.5; colors[i * 3 + 1] = 0.85 - f * 0.2; colors[i * 3 + 2] = 0.4 + f * 0.5;
-      } else if (i % 2 === 0) {
-        const f = Math.min(1, (r - 8) / 16);
-        colors[i * 3] = 0.2 + f * 0.7; colors[i * 3 + 1] = 0.5 + f * 0.2; colors[i * 3 + 2] = 0.95;
+        colors[i * 3] = 0.3; colors[i * 3 + 1] = 0.4; colors[i * 3 + 2] = 0.7;
       } else {
-        const f = Math.min(1, (r - 8) / 16);
-        colors[i * 3] = 0.85 + f * 0.15; colors[i * 3 + 1] = 0.2 + f * 0.1; colors[i * 3 + 2] = 0.35 - f * 0.1;
+        colors[i * 3] = 0.1; colors[i * 3 + 1] = 0.15; colors[i * 3 + 2] = 0.4;
       }
     }
     return [positions, speeds, phases, colors, sizes];
@@ -400,16 +397,16 @@ function StageGrandCosmos({ active }: { active: boolean }) {
     const pa = pointsRef.current.geometry.attributes.position as THREE.BufferAttribute;
     const arr = pa.array as Float32Array;
 
-    const tiltX = mouse.y * 0.04;
-    const tiltZ = mouse.x * 0.04;
+    const tiltX = mouse.y * 0.02;
+    const tiltZ = mouse.x * 0.02;
 
     for (let i = 0; i < N; i++) {
       const ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
       let px = arr[ix], pz = arr[iz];
       const r = Math.max(0.1, Math.sqrt(px * px + pz * pz));
-      const angle = Math.atan2(pz, px) + sp[i] * delta * 0.7;
+      const angle = Math.atan2(pz, px) + sp[i] * delta * 0.5;
       arr[ix] = Math.cos(angle) * r;
-      arr[iy] = Math.sin(t * 0.35 + ph[i]) * 0.1 * (1 - r / 25) + tiltX;
+      arr[iy] = Math.sin(t * 0.2 + ph[i]) * 0.1 * (1 - r / 20) + tiltX;
       arr[iz] = Math.sin(angle) * r + tiltZ;
     }
     pa.needsUpdate = true;
@@ -424,10 +421,11 @@ function StageGrandCosmos({ active }: { active: boolean }) {
         <bufferAttribute attach="attributes-color" args={[col, 3]} />
         <bufferAttribute attach="attributes-aSize" args={[sz, 1]} />
       </bufferGeometry>
+      {/* Standard blending instead of Additive to prevent blowout */}
       <shaderMaterial
         vertexShader={starVertexShader}
         fragmentShader={starFragmentShader}
-        vertexColors transparent depthWrite={false} blending={THREE.AdditiveBlending}
+        vertexColors transparent depthWrite={false} blending={THREE.NormalBlending}
       />
     </points>
   );
@@ -464,10 +462,10 @@ function SubtitleDisplay({ words, visibleCount }: { words: string[]; visibleCoun
 }
 
 const STAGE_COLORS = [
-  "from-slate-900/40 to-transparent",
-  "from-blue-950/40 to-transparent",
+  "from-slate-900/20 to-transparent",
+  "from-blue-950/20 to-transparent",
   "from-black/40 to-transparent",
-  "from-indigo-950/40 to-transparent",
+  "from-indigo-950/20 to-transparent",
   "from-transparent to-transparent",
 ];
 
@@ -506,19 +504,19 @@ export default function HomePage() {
 
   useEffect(() => {
     if (stage < 4) {
-      const timer = setTimeout(advanceStage, 6500); // slightly longer stages for reading
+      const timer = setTimeout(advanceStage, 7000);
       return () => clearTimeout(timer);
     }
   }, [stage, advanceStage]);
 
   return (
     <main
-      className="relative w-full h-screen overflow-hidden bg-black"
+      className="relative w-full h-screen overflow-hidden bg-[#020202]"
       onClick={() => {
         if (stage < 4 && !transitioning) advanceStage();
       }}
     >
-      <div className="absolute inset-0 z-10 pointer-events-none" style={{ background: "radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.72) 100%)" }} />
+      <div className="absolute inset-0 z-10 pointer-events-none" style={{ background: "radial-gradient(ellipse at center, transparent 30%, rgba(2,2,2,0.9) 100%)" }} />
 
       <AnimatePresence mode="wait">
         <motion.div key={`tint-${stage}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 1.2 }} className={`absolute inset-0 z-5 pointer-events-none bg-gradient-to-b ${STAGE_COLORS[stage]}`} />
@@ -527,10 +525,10 @@ export default function HomePage() {
       <motion.div className="absolute inset-0 z-20 bg-black pointer-events-none" animate={{ opacity: transitioning ? 1 : 0 }} transition={{ duration: 0.65, ease: "easeInOut" }} />
 
       <motion.div className="absolute inset-0" animate={{ opacity: canvasOpacity }} transition={{ duration: 0.7, ease: "easeOut" }}>
-        <Canvas camera={{ position: [0, 2, 12], fov: 58 }} style={{ width: "100%", height: "100%" }} gl={{ antialias: true, alpha: false }}>
-          <color attach="background" args={["#000003"]} />
+        <Canvas camera={{ position: [0, ORBIT_Y + 2, 12], fov: 55, near: 0.1, far: 50000 }} style={{ width: "100%", height: "100%" }} gl={{ antialias: true, alpha: false, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.2 }}>
+          <color attach="background" args={["#010101"]} />
           <Environment preset="night" />
-          <Stars radius={140} depth={50} count={5500} factor={3.5} saturation={0.4} fade />
+          <Stars radius={2500} depth={500} count={3500} factor={4} saturation={0} fade speed={0.5} />
 
           <Suspense fallback={null}>
             <SpaceScene stage={stage} active={stage <= 3} />
@@ -541,7 +539,7 @@ export default function HomePage() {
         </Canvas>
       </motion.div>
 
-      <button onClick={(e) => { e.stopPropagation(); setMuted((m) => !m); }} className="absolute top-6 right-6 z-40 flex items-center gap-2 px-3 py-2 rounded-full bg-white/5 border border-white/10 backdrop-blur-md text-white/60 hover:text-white hover:bg-white/10 transition-all text-xs tracking-widest font-mono uppercase">
+      <button onClick={(e) => { e.stopPropagation(); setMuted((m) => !m); }} className="absolute top-6 right-6 z-40 flex items-center gap-2 px-3 py-2 rounded-full bg-white/5 border border-white/10 backdrop-blur-md text-white/40 hover:text-white hover:bg-white/10 transition-all text-xs tracking-widest font-mono uppercase">
         {muted ? "Sound On" : "Muted"}
       </button>
 
@@ -562,8 +560,8 @@ export default function HomePage() {
             <motion.h2 initial={{ opacity: 0, scale: 0.94, y: 6 }} animate={{ opacity: 1, scale: 1, y: 0 }} transition={{ duration: 1.1, delay: 0.5, ease: "easeOut" }} className="text-2xl md:text-4xl font-thin text-white tracking-[0.35em] text-center select-none">
               {STAGE_TITLES[stage]}
             </motion.h2>
-            <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 1, delay: 1.4 }} className="absolute bottom-16 text-white/25 text-[10px] tracking-[0.4em] uppercase font-mono">
-              Click to advance · Auto in 6s
+            <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 1, delay: 1.4 }} className="absolute bottom-16 text-white/20 text-[9px] tracking-[0.4em] uppercase font-mono">
+              Click to advance · Auto in 7s
             </motion.p>
           </motion.div>
         )}
@@ -589,7 +587,7 @@ export default function HomePage() {
               102 Celestial Objects · Real-Time Gravitational Simulations · AI Voice Narrator
             </motion.p>
             <motion.button initial={{ opacity: 0, scale: 0.85 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 1.0, delay: 0.8, type: "spring", stiffness: 100 }} whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.97 }} onClick={(e) => { e.stopPropagation(); router.push("/explore"); }} className="pointer-events-auto relative group cursor-pointer">
-              <span className="absolute -inset-2 rounded-full bg-gradient-to-r from-cyan-500 via-blue-500 to-purple-600 opacity-50 blur-xl group-hover:opacity-80 transition-all duration-700" />
+              <span className="absolute -inset-2 rounded-full bg-gradient-to-r from-cyan-500 via-blue-500 to-purple-600 opacity-20 blur-xl group-hover:opacity-40 transition-all duration-700" />
               <span className="relative flex items-center gap-3 px-14 py-4 rounded-full bg-black/80 backdrop-blur-2xl border border-white/20 text-white font-light tracking-[0.3em] text-sm uppercase shadow-2xl group-hover:border-white/35 transition-colors">
                 Enter the Cosmos
               </span>

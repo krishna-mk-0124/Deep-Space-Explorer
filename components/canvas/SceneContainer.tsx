@@ -1,0 +1,70 @@
+"use client";
+
+import { Canvas } from "@react-three/fiber";
+import { OrbitControls, Stars } from "@react-three/drei";
+import { Physics } from "@react-three/rapier";
+import { useExplorer } from "@/store/explorerStore";
+import OrbitalSystem from "./simulations/OrbitalSystem";
+import BinarySystem from "./simulations/BinarySystem";
+import BlackHole from "./simulations/BlackHole";
+import Pulsar from "./simulations/Pulsar";
+import NBodyCluster from "./simulations/NBodyCluster";
+import GalaxyCollision from "./simulations/GalaxyCollision";
+import Supernova from "./simulations/Supernova";
+
+function SimulationSwitch() {
+  const { selectedObject, sliderValues } = useExplorer();
+  if (!selectedObject) return null;
+
+  const params = { ...selectedObject.simulationParams, ...sliderValues } as Record<string, number | string>;
+
+  switch (selectedObject.type) {
+    case "Orbital":
+      return <OrbitalSystem params={params} object={selectedObject} />;
+    case "Binary":
+      return <BinarySystem params={params} object={selectedObject} />;
+    case "BlackHole":
+      return <BlackHole params={params} object={selectedObject} />;
+    case "Pulsar":
+      return <Pulsar params={params} object={selectedObject} />;
+    case "Cluster":
+      return <NBodyCluster params={params} object={selectedObject} />;
+    case "GalaxyCollision":
+      return <GalaxyCollision params={params} object={selectedObject} />;
+    case "Supernova":
+      return <Supernova params={params} object={selectedObject} />;
+    default:
+      return null;
+  }
+}
+
+export default function SceneContainer() {
+  return (
+    <Canvas
+      camera={{ position: [0, 8, 20], fov: 55 }}
+      style={{ width: "100%", height: "100%" }}
+      gl={{ antialias: true, alpha: false }}
+    >
+      <ambientLight intensity={0.15} />
+      <pointLight position={[0, 20, 0]} intensity={1.5} color="#ffffff" />
+      <pointLight position={[-20, -10, -10]} intensity={0.5} color="#4466ff" />
+
+      <Stars radius={200} depth={80} count={6000} factor={4} saturation={0.3} fade speed={0.3} />
+
+      <Physics gravity={[0, 0, 0]} timeStep="vary">
+        <SimulationSwitch />
+      </Physics>
+
+      <OrbitControls
+        enablePan
+        enableZoom
+        enableRotate
+        minDistance={3}
+        maxDistance={80}
+        zoomSpeed={0.8}
+        rotateSpeed={0.5}
+        makeDefault
+      />
+    </Canvas>
+  );
+}

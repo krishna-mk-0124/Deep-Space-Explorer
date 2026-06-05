@@ -293,8 +293,9 @@ function SpaceScene({ stage, active, elapsed }: { stage: number, active: boolean
   const exhaustRef = useRef<THREE.Points>(null);
   const earthGroupRef = useRef<THREE.Group>(null);
 
-  const { scene: shuttleModel } = useGLTF("/models/shuttle.glb", true, true, (e) => console.log("Shuttle fallback"));
-  const { scene: hubbleModel } = useGLTF("/models/hubble.glb", true, true, (e) => console.log("Hubble fallback"));
+  // Forced to use procedural high-fidelity models
+  const shuttleModel = null;
+  const hubbleModel = null;
   
   const [earthColorMap] = useTexture(["/textures/earth_8k.jpg"]);
 

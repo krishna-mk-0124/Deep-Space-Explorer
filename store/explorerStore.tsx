@@ -50,9 +50,10 @@ function buildInitialSliders(obj: CelestialObject): SliderValues {
 
 export function ExplorerProvider({ children }: { children: React.ReactNode }) {
   const objects = celestialData as unknown as CelestialObject[];
-  const [selectedObject, setSelectedObjectState] = useState<CelestialObject>(objects[0]);
+  const initialObject = objects.find(o => o.id === "sagittarius-a") || objects[0];
+  const [selectedObject, setSelectedObjectState] = useState<CelestialObject>(initialObject);
   const [sliderValues, setSliderValues] = useState<SliderValues>(
-    buildInitialSliders(objects[0])
+    buildInitialSliders(initialObject)
   );
   const [timeScale, setTimeScale] = useState<number>(1.0);
   const [isPlaying, setIsPlaying] = useState<boolean>(true);

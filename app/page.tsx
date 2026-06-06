@@ -2,8 +2,11 @@
 
 import { useState, useRef, useEffect, useMemo, useCallback, Suspense } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { Stars, useGLTF, useTexture, Environment, CameraShake } from "@react-three/drei";
-import { EffectComposer, Bloom, Vignette } from "@react-three/postprocessing";
+import { Stars, useTexture, Environment, CameraShake } from "@react-three/drei";
+import { EffectComposer as EC, Bloom as BloomEffect, Vignette as VignetteEffect } from "@react-three/postprocessing";
+const EffectComposerAny = EC as any;
+const BloomAny = BloomEffect as any;
+const VignetteAny = VignetteEffect as any;
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import * as THREE from "three";
@@ -247,40 +250,321 @@ function CinematicCamera({ stage, elapsed }: { stage: number; elapsed: number })
   return null;
 }
 
-// ─── Procedural Rigs (If Models Fail) ───────────────────────────────────────
+// ─── Detailed Procedural Rigs ────────────────────────────────────────────────
+
+// Helper: create a LatheGeometry from a 2D profile (array of [radius, y] points)
+function createLatheProfile(points: [number, number][], segments = 48): THREE.LatheGeometry {
+  const vec2Points = points.map(([r, y]) => new THREE.Vector2(r, y));
+  return new THREE.LatheGeometry(vec2Points, segments);
+}
+
+// Helper: create an ExtrudeGeometry wing from a 2D shape
+function createWingShape(rootChord: number, tipChord: number, span: number, sweep: number): THREE.ExtrudeGeometry {
+  const shape = new THREE.Shape();
+  shape.moveTo(0, 0);
+  shape.lineTo(rootChord, 0);
+  shape.lineTo(sweep + tipChord, span);
+  shape.lineTo(sweep, span);
+  shape.closePath();
+  return new THREE.ExtrudeGeometry(shape, { depth: 0.02, bevelEnabled: false });
+}
+
 function ProceduralShuttle({ doorsOpen }: { doorsOpen: number }) {
+  // Shuttle total length ~3.72 units (37.2m at 1u=10m)
+  // Y-axis is the long axis (nose up, engines down)
+  const L = SHUTTLE_LENGTH;
+  
+  // Fuselage profile: [radius, y] — aerodynamic nose taper to cylindrical body to engine shroud
+  const fuselageGeo = useMemo(() => createLatheProfile([
+    [0.0,   L * 0.50],   // Nose tip
+    [0.06,  L * 0.48],   // Nose start
+    [0.15,  L * 0.44],   // Nose taper
+    [0.28,  L * 0.38],   // Cockpit area
+    [0.35,  L * 0.30],   // Forward fuselage
+    [0.38,  L * 0.20],   // Mid fuselage
+    [0.40,  L * 0.10],   // Payload bay start
+    [0.40, -L * 0.25],   // Payload bay end
+    [0.42, -L * 0.30],   // Aft fuselage start
+    [0.44, -L * 0.40],   // Engine mount area
+    [0.40, -L * 0.48],   // Engine shroud taper
+    [0.38, -L * 0.50],   // Engine exit plane
+  ], 32), [L]);
+
+  // Delta wing
+  const wingGeo = useMemo(() => createWingShape(1.2, 0.3, 1.3, 0.5), []);
+
+  // Vertical stabilizer
+  const stabGeo = useMemo(() => createWingShape(0.9, 0.25, 0.8, 0.45), []);
+
+  // Engine bell profile
+  const engineBellGeo = useMemo(() => createLatheProfile([
+    [0.0,  0.08],
+    [0.06, 0.06],
+    [0.04, 0.0],
+    [0.06, -0.04],
+    [0.10, -0.12],
+    [0.14, -0.20],
+  ], 16), []);
+
+  // OMS pod profile
+  const omsGeo = useMemo(() => createLatheProfile([
+    [0.0,  0.25],
+    [0.06, 0.20],
+    [0.10, 0.10],
+    [0.10, -0.10],
+    [0.08, -0.20],
+    [0.05, -0.25],
+  ], 12), []);
+
+  const whiteMat = useMemo(() => ({ color: "#e8e8e8", metalness: 0.15, roughness: 0.35 }), []);
+  const darkMat = useMemo(() => ({ color: "#1a1a1a", metalness: 0.3, roughness: 0.6 }), []);
+  const tpsMat = useMemo(() => ({ color: "#111111", metalness: 0.1, roughness: 0.95 }), []);  // Thermal protection tiles
+
   return (
-    <group position={[0,0,0]}>
-      {/* Fuselage */}
-      <mesh position={[0, 0, 0]}><cylinderGeometry args={[0.4, 0.5, SHUTTLE_LENGTH, 32]} /><meshStandardMaterial color="#eeeeee" metalness={0.2} roughness={0.3} /></mesh>
-      {/* Nose Cone */}
-      <mesh position={[0, SHUTTLE_LENGTH/2 + 0.4, 0]}><coneGeometry args={[0.4, 0.8, 32]} /><meshStandardMaterial color="#111111" metalness={0.1} roughness={0.9} /></mesh>
-      {/* Delta Wings */}
-      <mesh position={[0, -0.5, -0.2]} rotation={[Math.PI/2, 0, 0]}><boxGeometry args={[2.5, 1.8, 0.1]} /><meshStandardMaterial color="#dddddd" /></mesh>
-      {/* Payload Doors */}
-      <group position={[0, 0, 0]}>
-        <mesh position={[-0.2, 0, 0]} rotation={[0, 0, doorsOpen * Math.PI/1.5]}><cylinderGeometry args={[0.41, 0.41, SHUTTLE_LENGTH * 0.5, 16, 1, false, 0, Math.PI]} /><meshStandardMaterial color="#ffffff" side={THREE.DoubleSide} /></mesh>
-        <mesh position={[0.2, 0, 0]} rotation={[0, 0, -doorsOpen * Math.PI/1.5]}><cylinderGeometry args={[0.41, 0.41, SHUTTLE_LENGTH * 0.5, 16, 1, false, Math.PI, Math.PI]} /><meshStandardMaterial color="#ffffff" side={THREE.DoubleSide} /></mesh>
+    <group>
+      {/* Main fuselage body */}
+      <mesh geometry={fuselageGeo}>
+        <meshStandardMaterial {...whiteMat} />
+      </mesh>
+
+      {/* Cockpit windows */}
+      <mesh position={[0.3, L * 0.36, 0]} rotation={[0, 0, -0.3]}>
+        <planeGeometry args={[0.15, 0.08]} />
+        <meshStandardMaterial color="#0a1520" metalness={0.9} roughness={0.1} />
+      </mesh>
+      <mesh position={[0.28, L * 0.33, 0.12]} rotation={[0, 0.4, -0.3]}>
+        <planeGeometry args={[0.12, 0.06]} />
+        <meshStandardMaterial color="#0a1520" metalness={0.9} roughness={0.1} />
+      </mesh>
+
+      {/* Thermal Protection (underside belly - dark tiles) */}
+      <mesh position={[0, -0.05, 0]} rotation={[Math.PI, 0, 0]}>
+        <cylinderGeometry args={[0.41, 0.41, L * 0.7, 32, 1, false, 0, Math.PI]} />
+        <meshStandardMaterial {...tpsMat} side={THREE.DoubleSide} />
+      </mesh>
+
+      {/* Left delta wing */}
+      <group position={[-0.38, -L * 0.15, 0.0]} rotation={[Math.PI / 2, 0, Math.PI]}>
+        <mesh geometry={wingGeo}>
+          <meshStandardMaterial {...whiteMat} />
+        </mesh>
       </group>
-      {/* Engine Bells */}
-      <mesh position={[0, -SHUTTLE_LENGTH/2 - 0.2, 0]}><coneGeometry args={[0.3, 0.4, 16]} /><meshStandardMaterial color="#222222" metalness={0.8} roughness={0.4} /></mesh>
-      <mesh position={[-0.25, -SHUTTLE_LENGTH/2 - 0.1, 0.2]}><coneGeometry args={[0.2, 0.3, 16]} /><meshStandardMaterial color="#222222" metalness={0.8} roughness={0.4} /></mesh>
-      <mesh position={[0.25, -SHUTTLE_LENGTH/2 - 0.1, 0.2]}><coneGeometry args={[0.2, 0.3, 16]} /><meshStandardMaterial color="#222222" metalness={0.8} roughness={0.4} /></mesh>
+      {/* Right delta wing */}
+      <group position={[0.38, -L * 0.15, 0.0]} rotation={[Math.PI / 2, Math.PI, 0]}>
+        <mesh geometry={wingGeo}>
+          <meshStandardMaterial {...whiteMat} />
+        </mesh>
+      </group>
+
+      {/* Vertical stabilizer */}
+      <group position={[0, -L * 0.15, -0.38]} rotation={[0, Math.PI / 2, 0]}>
+        <mesh geometry={stabGeo}>
+          <meshStandardMaterial {...whiteMat} />
+        </mesh>
+      </group>
+
+      {/* Payload bay doors (animated open) */}
+      <group position={[0, L * 0.05, 0]}>
+        {/* Left door */}
+        <group rotation={[0, 0, doorsOpen * Math.PI * 0.55]}>
+          <mesh position={[0, 0, 0.2]}>
+            <cylinderGeometry args={[0.395, 0.395, L * 0.4, 16, 1, false, 0, Math.PI * 0.45]} />
+            <meshStandardMaterial color="#ddd" side={THREE.DoubleSide} metalness={0.2} roughness={0.3} />
+          </mesh>
+        </group>
+        {/* Right door */}
+        <group rotation={[0, 0, -doorsOpen * Math.PI * 0.55]}>
+          <mesh position={[0, 0, 0.2]} rotation={[0, 0, 0]}>
+            <cylinderGeometry args={[0.395, 0.395, L * 0.4, 16, 1, false, Math.PI * 0.55, Math.PI * 0.45]} />
+            <meshStandardMaterial color="#ddd" side={THREE.DoubleSide} metalness={0.2} roughness={0.3} />
+          </mesh>
+        </group>
+      </group>
+
+      {/* OMS Pods (left & right) */}
+      <mesh geometry={omsGeo} position={[-0.3, -L * 0.35, -0.15]}>
+        <meshStandardMaterial {...whiteMat} />
+      </mesh>
+      <mesh geometry={omsGeo} position={[0.3, -L * 0.35, -0.15]}>
+        <meshStandardMaterial {...whiteMat} />
+      </mesh>
+
+      {/* Three SSME Engine Bells */}
+      <mesh geometry={engineBellGeo} position={[0, -L * 0.50, 0.05]}>
+        <meshStandardMaterial {...darkMat} />
+      </mesh>
+      <mesh geometry={engineBellGeo} position={[-0.18, -L * 0.48, -0.02]}>
+        <meshStandardMaterial {...darkMat} />
+      </mesh>
+      <mesh geometry={engineBellGeo} position={[0.18, -L * 0.48, -0.02]}>
+        <meshStandardMaterial {...darkMat} />
+      </mesh>
+
+      {/* Engine glow emissive ring */}
+      <mesh position={[0, -L * 0.52, 0.05]}>
+        <ringGeometry args={[0.02, 0.12, 16]} />
+        <meshStandardMaterial color="#4488ff" emissive="#4488ff" emissiveIntensity={3} />
+      </mesh>
+
+      {/* USA text strip */}
+      <mesh position={[0.41, L * 0.05, 0]} rotation={[0, Math.PI / 2, 0]}>
+        <planeGeometry args={[0.6, 0.08]} />
+        <meshStandardMaterial color="#222" />
+      </mesh>
     </group>
   );
 }
 
 function ProceduralHubble({ arraysOpen }: { arraysOpen: number }) {
+  const HL = HUBBLE_LENGTH;
+
+  // Main telescope tube profile
+  const tubeGeo = useMemo(() => createLatheProfile([
+    [0.22, HL * 0.50],   // Forward aperture rim
+    [0.215, HL * 0.48],  // Aperture baffle
+    [0.20, HL * 0.46],   // Baffle inner step
+    [0.20, HL * 0.40],   // Forward shell start
+    [0.21, HL * 0.35],   // Forward shell
+    [0.21, HL * 0.10],   // Main tube
+    [0.21, -HL * 0.10],  // Mid tube
+    [0.22, -HL * 0.15],  // Equipment section bump
+    [0.22, -HL * 0.30],  // Aft shroud
+    [0.21, -HL * 0.40],  // Aft shroud taper
+    [0.19, -HL * 0.48],  // Aft bulkhead
+    [0.17, -HL * 0.50],  // Aft end
+  ], 32), [HL]);
+
+  // Forward aperture door
+  const apertureDoorGeo = useMemo(() => createLatheProfile([
+    [0.0,  0.03],
+    [0.18, 0.02],
+    [0.20, 0.0],
+    [0.18, -0.02],
+    [0.0,  -0.03],
+  ], 24), []);
+
+  // High-gain antenna dish
+  const antennaGeo = useMemo(() => createLatheProfile([
+    [0.0,  0.04],
+    [0.08, 0.02],
+    [0.12, -0.01],
+    [0.14, -0.04],
+  ], 12), []);
+
+  // Silver MLI (multi-layer insulation) material
+  const mliMat = useMemo(() => ({
+    color: "#c0c0c0",
+    metalness: 0.95,
+    roughness: 0.08,
+  }), []);
+
   return (
     <group>
-      <mesh><cylinderGeometry args={[0.21, 0.21, HUBBLE_LENGTH, 32]} /><meshStandardMaterial color="#c0c0c0" metalness={0.95} roughness={0.1} /></mesh>
-      <mesh position={[0, HUBBLE_LENGTH/2 + 0.1, 0]}><cylinderGeometry args={[0.22, 0.22, 0.2, 32]} /><meshStandardMaterial color="#111" /></mesh>
-      {/* Golden Solar Arrays */}
-      <group position={[-0.25, 0, 0]} scale={[arraysOpen, 1, 1]}>
-        <mesh position={[-0.8, 0, 0]}><boxGeometry args={[1.6, 0.8, 0.05]} /><meshStandardMaterial color="#ffd700" metalness={1} roughness={0.2} /></mesh>
+      {/* Main telescope tube */}
+      <mesh geometry={tubeGeo}>
+        <meshStandardMaterial {...mliMat} />
+      </mesh>
+
+      {/* Forward aperture door (slightly tilted open) */}
+      <mesh geometry={apertureDoorGeo} position={[0, HL * 0.52, 0]} rotation={[0.15, 0, 0]}>
+        <meshStandardMaterial color="#888" metalness={0.8} roughness={0.2} />
+      </mesh>
+
+      {/* Inner primary mirror (reflective) */}
+      <mesh position={[0, -HL * 0.35, 0]} rotation={[Math.PI / 2, 0, 0]}>
+        <circleGeometry args={[0.16, 32]} />
+        <meshStandardMaterial color="#e0e8ff" metalness={1.0} roughness={0.02} emissive="#223355" emissiveIntensity={0.3} />
+      </mesh>
+
+      {/* Equipment bay segments (raised rings) */}
+      {[-0.15, -0.05, 0.05].map((yOff, i) => (
+        <mesh key={i} position={[0, HL * yOff, 0]}>
+          <torusGeometry args={[0.215, 0.008, 8, 32]} />
+          <meshStandardMaterial color="#999" metalness={0.6} roughness={0.3} />
+        </mesh>
+      ))}
+
+      {/* Aft shroud equipment boxes */}
+      <mesh position={[0.18, -HL * 0.35, 0.1]}>
+        <boxGeometry args={[0.06, 0.12, 0.06]} />
+        <meshStandardMaterial color="#888" metalness={0.5} roughness={0.4} />
+      </mesh>
+      <mesh position={[-0.18, -HL * 0.35, -0.1]}>
+        <boxGeometry args={[0.06, 0.12, 0.06]} />
+        <meshStandardMaterial color="#888" metalness={0.5} roughness={0.4} />
+      </mesh>
+
+      {/* High-Gain Antenna (top) */}
+      <group position={[0.15, HL * 0.30, 0.15]}>
+        <mesh>
+          <cylinderGeometry args={[0.008, 0.008, 0.2, 8]} />
+          <meshStandardMaterial color="#aaa" metalness={0.7} roughness={0.3} />
+        </mesh>
+        <mesh geometry={antennaGeo} position={[0, 0.12, 0]}>
+          <meshStandardMaterial color="#ddd" metalness={0.7} roughness={0.2} />
+        </mesh>
       </group>
-      <group position={[0.25, 0, 0]} scale={[arraysOpen, 1, 1]}>
-        <mesh position={[0.8, 0, 0]}><boxGeometry args={[1.6, 0.8, 0.05]} /><meshStandardMaterial color="#ffd700" metalness={1} roughness={0.2} /></mesh>
+
+      {/* High-Gain Antenna (bottom) */}
+      <group position={[-0.15, -HL * 0.30, -0.15]} rotation={[Math.PI, 0, 0]}>
+        <mesh>
+          <cylinderGeometry args={[0.008, 0.008, 0.2, 8]} />
+          <meshStandardMaterial color="#aaa" metalness={0.7} roughness={0.3} />
+        </mesh>
+        <mesh geometry={antennaGeo} position={[0, 0.12, 0]}>
+          <meshStandardMaterial color="#ddd" metalness={0.7} roughness={0.2} />
+        </mesh>
+      </group>
+
+      {/* Solar Array Masts + Panels — LEFT */}
+      <group position={[-0.22, 0, 0]} scale={[arraysOpen, 1, 1]}>
+        {/* Mast */}
+        <mesh position={[-0.15, 0, 0]} rotation={[0, 0, Math.PI / 2]}>
+          <cylinderGeometry args={[0.006, 0.006, 0.3, 6]} />
+          <meshStandardMaterial color="#888" metalness={0.5} roughness={0.4} />
+        </mesh>
+        {/* Panel frame */}
+        <mesh position={[-0.55, 0, 0]}>
+          <boxGeometry args={[0.7, 0.5, 0.012]} />
+          <meshStandardMaterial color="#b8860b" metalness={0.85} roughness={0.15} />
+        </mesh>
+        {/* Panel grid lines */}
+        {[0, 1, 2, 3].map((j) => (
+          <mesh key={`lg${j}`} position={[-0.55, -0.2 + j * 0.133, 0.007]}>
+            <boxGeometry args={[0.7, 0.003, 0.003]} />
+            <meshStandardMaterial color="#8B6914" />
+          </mesh>
+        ))}
+        {[0, 1, 2, 3, 4].map((j) => (
+          <mesh key={`vg${j}`} position={[-0.2 - j * 0.175, 0, 0.007]}>
+            <boxGeometry args={[0.003, 0.5, 0.003]} />
+            <meshStandardMaterial color="#8B6914" />
+          </mesh>
+        ))}
+      </group>
+
+      {/* Solar Array Masts + Panels — RIGHT */}
+      <group position={[0.22, 0, 0]} scale={[arraysOpen, 1, 1]}>
+        <mesh position={[0.15, 0, 0]} rotation={[0, 0, Math.PI / 2]}>
+          <cylinderGeometry args={[0.006, 0.006, 0.3, 6]} />
+          <meshStandardMaterial color="#888" metalness={0.5} roughness={0.4} />
+        </mesh>
+        <mesh position={[0.55, 0, 0]}>
+          <boxGeometry args={[0.7, 0.5, 0.012]} />
+          <meshStandardMaterial color="#b8860b" metalness={0.85} roughness={0.15} />
+        </mesh>
+        {[0, 1, 2, 3].map((j) => (
+          <mesh key={`rg${j}`} position={[0.55, -0.2 + j * 0.133, 0.007]}>
+            <boxGeometry args={[0.7, 0.003, 0.003]} />
+            <meshStandardMaterial color="#8B6914" />
+          </mesh>
+        ))}
+        {[0, 1, 2, 3, 4].map((j) => (
+          <mesh key={`rvg${j}`} position={[0.2 + j * 0.175, 0, 0.007]}>
+            <boxGeometry args={[0.003, 0.5, 0.003]} />
+            <meshStandardMaterial color="#8B6914" />
+          </mesh>
+        ))}
       </group>
     </group>
   );
@@ -293,9 +577,7 @@ function SpaceScene({ stage, active, elapsed }: { stage: number, active: boolean
   const exhaustRef = useRef<THREE.Points>(null);
   const earthGroupRef = useRef<THREE.Group>(null);
 
-  // Forced to use procedural high-fidelity models
-  const shuttleModel = null;
-  const hubbleModel = null;
+
   
   const [earthColorMap] = useTexture(["/textures/earth_8k.jpg"]);
 
@@ -397,7 +679,7 @@ function SpaceScene({ stage, active, elapsed }: { stage: number, active: boolean
       </group>
 
       <group ref={shuttleRef} position={[0, ORBIT_Y - 10, 0]} visible={stage <= 2}>
-        {shuttleModel ? <primitive object={shuttleModel} scale={SCALE_FACTOR} /> : <ProceduralShuttle doorsOpen={doorsOpen} />}
+        <ProceduralShuttle doorsOpen={doorsOpen} />
         
         {stage === 0 && (
           <points ref={exhaustRef} position={[0, -SHUTTLE_LENGTH/2, 0]}>
@@ -412,7 +694,7 @@ function SpaceScene({ stage, active, elapsed }: { stage: number, active: boolean
       </group>
 
       <group ref={hubbleRef} position={[0, ORBIT_Y, 0]} visible={stage >= 2 && stage <= 3}>
-        {hubbleModel ? <primitive object={hubbleModel} scale={SCALE_FACTOR} /> : <ProceduralHubble arraysOpen={arraysOpen} />}
+        <ProceduralHubble arraysOpen={arraysOpen} />
       </group>
     </group>
   );
@@ -543,10 +825,10 @@ export default function HomePage() {
           {stage === 0 && <CameraShake maxYaw={0.02} maxPitch={0.02} maxRoll={0.02} yawFrequency={0.2} pitchFrequency={0.2} rollFrequency={0.2} />}
           
           {/* Cinematic Post-Processing */}
-          <EffectComposer disableNormalPass>
-            <Bloom luminanceThreshold={0.5} mipmapBlur intensity={1.5} />
-            <Vignette eskil={false} offset={0.1} darkness={1.1} />
-          </EffectComposer>
+          <EffectComposerAny disableNormalPass>
+            <BloomAny luminanceThreshold={0.5} mipmapBlur intensity={1.5} />
+            <VignetteAny eskil={false} offset={0.1} darkness={1.1} />
+          </EffectComposerAny>
 
           <Suspense fallback={null}>
             <SpaceScene stage={stage} active={stage <= 3} elapsed={stageElapsed} />

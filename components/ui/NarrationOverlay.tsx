@@ -12,15 +12,19 @@ export default function NarrationOverlay() {
   
   const [narrationState, setNarrationState] = useState<NarrationState>("IDLE");
   const [subtitle, setSubtitle] = useState<string>("");
+  const [subtitleWords, setSubtitleWords] = useState<string[]>([]);
+  const [wordIdx, setWordIdx] = useState<number>(0);
   const [currentFactIndex, setCurrentFactIndex] = useState<number>(0);
   const [isSpeaking, setIsSpeaking] = useState(false);
 
   const utterRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const wordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const stopSpeaking = useCallback(() => {
     if (typeof window !== "undefined" && window.speechSynthesis) {
       window.speechSynthesis.cancel();
     }
+    if (wordTimerRef.current) clearInterval(wordTimerRef.current);
     setIsSpeaking(false);
   }, []);
 
@@ -30,6 +34,10 @@ export default function NarrationOverlay() {
 
     const cleanText = text.replace(/[☉⊕*]/g, "").trim();
     const utterance = new SpeechSynthesisUtterance(cleanText);
+    
+    const words = text.split(" ");
+    setSubtitleWords(words);
+    setWordIdx(0);
 
     // Pick deep, professional voice
     const voices = window.speechSynthesis.getVoices();
@@ -47,15 +55,43 @@ export default function NarrationOverlay() {
     utterance.rate = 0.88;  // slower tempo for documentary style
     utterance.pitch = 0.94; // slightly deeper pitch
 
+    let lastBoundaryFired = false;
+
+    utterance.onboundary = (e) => {
+      if (e.name === "word") {
+        lastBoundaryFired = true;
+        const wordsSoFar = cleanText.substring(0, e.charIndex).split(" ").length;
+        setWordIdx(wordsSoFar);
+      }
+    };
+
     utterance.onstart = () => {
       setIsSpeaking(true);
+      // Fallback timer if onboundary doesn't fire natively
+      setTimeout(() => {
+        if (!lastBoundaryFired) {
+          let idx = 0;
+          wordTimerRef.current = setInterval(() => {
+            idx++;
+            setWordIdx(idx);
+            if (idx >= words.length && wordTimerRef.current) {
+              clearInterval(wordTimerRef.current);
+            }
+          }, 260);
+        }
+      }, 500);
     };
+    
     utterance.onend = () => {
       setIsSpeaking(false);
+      setWordIdx(words.length);
+      if (wordTimerRef.current) clearInterval(wordTimerRef.current);
       if (onEnd) onEnd();
     };
+    
     utterance.onerror = () => {
       setIsSpeaking(false);
+      if (wordTimerRef.current) clearInterval(wordTimerRef.current);
     };
 
     utterRef.current = utterance;
@@ -163,7 +199,7 @@ export default function NarrationOverlay() {
         className="text-center"
       >
         <p className="inline-block px-6 py-3 rounded-xl bg-black/60 backdrop-blur-md shadow-2xl text-white/95 text-lg md:text-xl font-light tracking-wide leading-relaxed">
-          {subtitle}
+          {subtitleWords.slice(0, wordIdx + 1).join(" ")}
         </p>
       </motion.div>
     </div>

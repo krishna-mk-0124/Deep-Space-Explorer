@@ -40,16 +40,34 @@ function SimulationSwitch() {
   }
 }
 
+function getDistanceLy(data: Record<string, string>): number {
+  for (const [key, val] of Object.entries(data)) {
+    if (key.toLowerCase().includes("distance")) {
+      const v = val.toLowerCase().replace(/,/g, "");
+      if (v.includes("billion light-years")) return parseFloat(v) * 1e9;
+      if (v.includes("million light-years")) return parseFloat(v) * 1e6;
+      if (v.includes("light-years") || v.includes("ly")) return parseFloat(v);
+    }
+  }
+  return 0;
+}
+
 function CameraRig() {
   const { selectedObject } = useExplorer();
   const { camera, controls } = useThree();
   const isAnimating = useRef(false);
+  const time = useRef(0);
+  const duration = useRef(2);
 
   useEffect(() => {
     if (selectedObject) {
-      // Start zoomed way out for cinematic "zoom in" effect
-      camera.position.set(0, 80, 250);
+      const dist = getDistanceLy(selectedObject.encyclopedia.classificationData);
+      // Base duration 1.5s (local), up to 5.5s for billions of lightyears
+      duration.current = 1.5 + Math.min(Math.log10(dist + 1) * 0.4, 4);
+      
+      time.current = 0;
       isAnimating.current = true;
+      
       if (controls) {
         (controls as any).target.set(0, 0, 0);
         (controls as any).enabled = false;
@@ -59,12 +77,47 @@ function CameraRig() {
 
   useFrame((state, delta) => {
     if (isAnimating.current) {
-      const target = new THREE.Vector3(0, 8, 20);
-      // Smoothly interpolate towards the target resting position
-      state.camera.position.lerp(target, 2.5 * delta);
-      
-      // Once close enough, restore OrbitControls and stop animating
-      if (state.camera.position.distanceTo(target) < 0.5) {
+      time.current += delta;
+      let progress = time.current / duration.current;
+      if (progress > 1) progress = 1;
+
+      // Phase 1: Earth Horizon Lookup (0% to 15% of animation)
+      // Gives the feel of standing on a planet looking up before takeoff
+      if (progress < 0.15) {
+        const p = progress / 0.15; 
+        const ease = p * p * (3 - 2 * p); // smoothstep
+        
+        state.camera.position.lerpVectors(
+          new THREE.Vector3(0, -30, 10), // Low angle, looking up
+          new THREE.Vector3(0, 20, 500), // Shoot backward into space
+          ease
+        );
+        state.camera.lookAt(0, 50 * ease, 0);
+        
+        // Stretch FOV to simulate warp speed light stretching
+        (state.camera as THREE.PerspectiveCamera).fov = THREE.MathUtils.lerp(55, 140, Math.pow(ease, 2));
+        state.camera.updateProjectionMatrix();
+      } 
+      // Phase 2: FTL Warp Travel to Object (15% to 100%)
+      else {
+        const p = (progress - 0.15) / 0.85;
+        // easeOutExpo for dramatic FTL deceleration at the destination
+        const ease = p === 1 ? 1 : 1 - Math.pow(2, -10 * p);
+        
+        state.camera.position.lerpVectors(
+          new THREE.Vector3(0, 20, 500),
+          new THREE.Vector3(0, 8, 20), // Target resting position
+          ease
+        );
+        state.camera.lookAt(0, 0, 0);
+        
+        // Relax FOV back to normal
+        (state.camera as THREE.PerspectiveCamera).fov = THREE.MathUtils.lerp(140, 55, ease);
+        state.camera.updateProjectionMatrix();
+      }
+
+      // Finish animation
+      if (progress === 1) {
         isAnimating.current = false;
         if (controls) {
           (controls as any).enabled = true;

@@ -41,7 +41,7 @@ export default function OdometerOverlay() {
   };
 
   return (
-    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-6 px-6 py-4 rounded-full border border-cyan-500/30 bg-black/80 backdrop-blur-xl shadow-[0_0_30px_rgba(0,255,255,0.1)] z-20 pointer-events-auto">
+    <div className="absolute top-24 left-1/2 -translate-x-1/2 flex items-center gap-6 px-6 py-4 rounded-full border border-cyan-500/30 bg-black/80 backdrop-blur-xl shadow-[0_0_30px_rgba(0,255,255,0.1)] z-20 pointer-events-auto">
       {/* Target Distance */}
       <div className="flex items-center gap-3">
         <div className="p-2 bg-cyan-500/10 rounded-full border border-cyan-500/20">

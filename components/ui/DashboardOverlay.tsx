@@ -214,12 +214,18 @@ export default function DashboardOverlay() {
             <div className="grid grid-cols-2 gap-2">
               {selectedObject.type === "BlackHole" ? (
                 <div 
-                  className="bg-white/3 rounded-lg p-2 border border-white/6 cursor-pointer hover:bg-white/5 transition-colors"
+                  className={`bg-white/3 rounded-lg p-2 border ${accent.border} cursor-pointer hover:${accent.bg} transition-colors group`}
                   onClick={() => setBlackHoleRenderMode(blackHoleRenderMode === "cinematic" ? "scientific" : "cinematic")}
+                  title="Click to toggle rendering style"
                 >
-                  <p className="text-gray-600 text-[10px] uppercase font-mono">Render Mode</p>
-                  <p className={`text-xs font-mono mt-0.5 ${accent.text}`}>
-                    {blackHoleRenderMode === "cinematic" ? "Gargantua" : "Particles"}
+                  <p className="text-gray-400 text-[10px] uppercase font-mono flex items-center justify-between mb-1">
+                    Render Mode
+                    <span className={`text-[8px] px-1 py-0.5 rounded border ${accent.border} ${accent.text} group-hover:bg-white/10`}>
+                      TOGGLE
+                    </span>
+                  </p>
+                  <p className={`text-[11px] font-mono font-bold mt-0.5 ${accent.text}`}>
+                    {blackHoleRenderMode === "cinematic" ? "Cinematic Shader" : "Particle System"}
                   </p>
                 </div>
               ) : (

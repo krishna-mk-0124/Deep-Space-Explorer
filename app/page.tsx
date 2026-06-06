@@ -547,7 +547,7 @@ function StageStellarIgnition({ active }: { active: boolean }) {
 
     // North jet — helical stream
     const updateJet = (
-      ref: React.RefObject<THREE.Points>,
+      ref: React.RefObject<THREE.Points | null>,
       sp: Float32Array,
       ph: Float32Array,
       col: Float32Array,

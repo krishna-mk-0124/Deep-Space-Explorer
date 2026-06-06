@@ -222,20 +222,20 @@ function StageBigBang({ active, opacity }: { active: boolean; opacity: number })
     if (!active) return;
     const t = state.clock.getElapsedTime();
 
-    // Exponential camera shake decay
+    // Exponential camera shake decay - significantly reduced
     if (t < 2.2) {
-      const shake = 0.22 * Math.exp(-t * 1.8);
+      const shake = 0.03 * Math.exp(-t * 1.8);
       state.camera.position.x += (Math.random() - 0.5) * shake;
       state.camera.position.y += (Math.random() - 0.5) * shake;
     }
 
-    // Flash
+    // Flash - much softer and shorter
     if (flashRef.current) {
-      if (t < 1.8) {
+      if (t < 1.0) {
         const p = Math.min(1, t / 0.4);
-        const fade = t > 0.4 ? Math.max(0, 1 - (t - 0.4) / 1.4) : p;
-        flashRef.current.scale.setScalar(1 + t * 12);
-        (flashRef.current.material as THREE.MeshBasicMaterial).opacity = fade * 0.9;
+        const fade = t > 0.4 ? Math.max(0, 1 - (t - 0.4) / 0.6) : p;
+        flashRef.current.scale.setScalar(1 + t * 8);
+        (flashRef.current.material as THREE.MeshBasicMaterial).opacity = fade * 0.35;
       } else {
         (flashRef.current.material as THREE.MeshBasicMaterial).opacity = 0;
       }
@@ -243,7 +243,7 @@ function StageBigBang({ active, opacity }: { active: boolean; opacity: number })
 
     // Light decay
     if (lightRef.current) {
-      lightRef.current.intensity = Math.max(0, 80 * Math.exp(-t * 2.5));
+      lightRef.current.intensity = Math.max(0, 35 * Math.exp(-t * 2.5));
     }
 
     // Inner shell — fast hot particles
@@ -520,12 +520,12 @@ function StageStellarIgnition({ active }: { active: boolean }) {
       halosRef.current.rotation.x += delta * 0.025;
     }
 
-    // Ignition flash
+    // Ignition flash - softer
     if (flashRef.current) {
       if (t < 1.6) {
         const p = t / 1.6;
-        flashRef.current.scale.setScalar(1 + p * 20);
-        (flashRef.current.material as THREE.MeshBasicMaterial).opacity = Math.sin(p * Math.PI) * 0.85;
+        flashRef.current.scale.setScalar(1 + p * 12);
+        (flashRef.current.material as THREE.MeshBasicMaterial).opacity = Math.sin(p * Math.PI) * 0.4;
       } else {
         (flashRef.current.material as THREE.MeshBasicMaterial).opacity = 0;
       }
@@ -547,7 +547,7 @@ function StageStellarIgnition({ active }: { active: boolean }) {
 
     // North jet — helical stream
     const updateJet = (
-      ref: React.RefObject<THREE.Points>,
+      ref: React.RefObject<THREE.Points | null>,
       sp: Float32Array,
       ph: Float32Array,
       col: Float32Array,
@@ -971,10 +971,8 @@ function SubtitleDisplay({ words, visibleCount }: { words: string[]; visibleCoun
       exit={{ opacity: 0 }}
       className="absolute bottom-24 left-1/2 -translate-x-1/2 z-30 w-full max-w-3xl px-8 pointer-events-none"
     >
-      <div className="relative px-6 py-3 rounded-2xl backdrop-blur-md bg-black/40 border border-white/8 shadow-2xl text-center">
-        {/* Subtle inner shimmer */}
-        <div className="absolute inset-0 rounded-2xl bg-gradient-to-b from-white/3 to-transparent pointer-events-none" />
-        <p className="relative text-sm md:text-base font-light text-white/90 tracking-wide leading-relaxed">
+      <div className="relative px-6 py-3 text-center">
+        <p className="relative text-lg md:text-xl font-bold text-white tracking-wide leading-relaxed mix-blend-difference">
           {words.map((word, idx) => (
             <motion.span
               key={idx}
@@ -1150,7 +1148,7 @@ export default function HomePage() {
               initial={{ opacity: 0, y: -8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.9, delay: 0.3 }}
-              className="mb-4 px-4 py-1 rounded-full border border-white/12 bg-white/4 backdrop-blur-sm text-[9px] tracking-[0.45em] text-white/40 font-mono uppercase"
+              className="mb-4 px-4 py-1 rounded-full text-[12px] tracking-[0.45em] text-white font-bold font-mono uppercase mix-blend-difference"
             >
               Chapter {stage + 1} of 4
             </motion.div>
@@ -1160,7 +1158,7 @@ export default function HomePage() {
               initial={{ opacity: 0, scale: 0.94, y: 6 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               transition={{ duration: 1.1, delay: 0.5, ease: "easeOut" }}
-              className="text-2xl md:text-4xl font-thin text-white tracking-[0.35em] text-center select-none"
+              className="text-3xl md:text-6xl font-bold text-white tracking-[0.35em] text-center select-none mix-blend-difference"
             >
               {STAGE_TITLES[stage]}
             </motion.h2>
@@ -1170,7 +1168,7 @@ export default function HomePage() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 1, delay: 1.4 }}
-              className="absolute bottom-16 text-white/25 text-[10px] tracking-[0.4em] uppercase font-mono"
+              className="absolute bottom-16 text-white text-[12px] font-bold tracking-[0.4em] uppercase font-mono mix-blend-difference"
             >
               Click to advance · Auto in {stage < 4 ? "5s" : ""}
             </motion.p>

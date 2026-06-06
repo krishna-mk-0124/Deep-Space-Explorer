@@ -155,11 +155,13 @@ const bhFragmentShader = `
                   float jetHeightFade = smoothstep(rs * 15.0, rs * 1.5, abs(p.y));
                   float jetCoreFade = smoothstep(rs * 0.8, 0.0, jetDist);
                   
-                  float jDens = fbm(vec3(p.x * 3.0, p.y * 1.0 - sign(p.y) * uTime * 8.0, p.z * 3.0));
+                  // Fast streaming animation for jets
+                  float jDens = fbm(vec3(p.x * 4.0, p.y * 1.5 - sign(p.y) * uTime * 35.0, p.z * 4.0));
+                  jDens = pow(jDens, 1.5); // Increase contrast of the stream
                   jDens *= jetHeightFade * jetCoreFade;
                   
-                  float localJetAlpha = jDens * uJetIntensity * 0.15;
-                  vec3 jetColor = mix(vec3(0.5, 0.7, 1.0), vec3(0.9, 0.5, 1.0), jDens) * uJetIntensity * 2.5;
+                  float localJetAlpha = jDens * uJetIntensity * 0.25;
+                  vec3 jetColor = mix(vec3(0.3, 0.6, 1.0), vec3(0.9, 0.8, 1.0), jDens) * uJetIntensity * 5.0;
                   
                   diskCol += jetColor * (1.0 - diskAlpha);
                   diskAlpha += localJetAlpha * (1.0 - diskAlpha);
@@ -182,9 +184,15 @@ const bhFragmentShader = `
       if (hitBH) {
           finalColor = diskCol; 
       } else {
-          float star = pow(hash(dot(v, vec3(12.34, 56.78, 91.01))), 200.0) * 3.0;
-          vec3 starCol = vec3(star) * mix(vec3(0.8,0.9,1.0), vec3(1.0,0.8,0.6), hash(v.x));
-          finalColor = diskCol + starCol * lensMask * (1.0 - diskAlpha);
+          // Dynamic starfield using bent ray
+          vec3 dir = normalize(v);
+          float star = pow(abs(sin(dir.x * 250.0 + hash(dir.y)*10.0) * sin(dir.y * 250.0 + hash(dir.z)*10.0) * sin(dir.z * 250.0 + hash(dir.x)*10.0)), 30.0) * 5.0;
+          vec3 starCol = mix(vec3(0.7,0.8,1.0), vec3(1.0,0.8,0.6), hash(dir.x)) * star;
+          
+          float milkyWay = fbm(dir * 3.0) * fbm(dir * 8.0);
+          vec3 mwCol = vec3(0.1, 0.2, 0.4) * milkyWay * 2.0;
+          
+          finalColor = diskCol + (starCol + mwCol) * lensMask * (1.0 - diskAlpha);
       }
 
       gl_FragColor = vec4(finalColor, min(finalAlpha, 1.0));

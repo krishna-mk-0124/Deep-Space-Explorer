@@ -260,7 +260,7 @@ function PhotonRing({ mass }: { mass: number }) {
       meshRef.current.rotation.z += delta * 0.02 * timeScale;
     }
   });
-  const r = 1.5 * Math.pow(mass / 80, 0.4);
+  const r = 1.5 * Math.pow(mass / 80, 0.4) * 2.6;
   return (
     <mesh ref={meshRef}>
       <torusGeometry args={[r * 1.55, 0.03, 6, 96]} />
@@ -301,9 +301,13 @@ export default function ParticleBlackHole({ params, object }: Props) {
   const jetIntensity = Number(params.jetIntensity) || 0.6;
   const isTDE = params.tidalDisruption === 1;
 
-  const bhRadius = 1.5 * Math.pow(mass / 80, 0.4);
-  const jetHeight = 8.5 * jetIntensity;
-  const jetRadius = 0.18 * jetIntensity;
+  // Scale up the particle geometry to match the Apparent Shadow Size (2.6x) of the Cinematic GR shader
+  const visualScale = 2.6; 
+  const baseMassRadius = 1.5 * Math.pow(mass / 80, 0.4);
+  const bhRadius = baseMassRadius * visualScale;
+  
+  const jetHeight = 8.5 * jetIntensity * visualScale;
+  const jetRadius = 0.18 * jetIntensity * visualScale;
 
   const jetUniforms = useMemo(() => ({
     uTime: { value: 0 },

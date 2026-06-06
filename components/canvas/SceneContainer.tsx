@@ -57,31 +57,43 @@ function CameraRig() {
   const { camera, controls } = useThree();
   const isAnimating = useRef(false);
   const time = useRef(0);
-  const duration = useRef(2);
-  const [transitionProgress, setTransitionProgress] = useState(1);
+  const duration = useRef(2.5);
 
   const startPos = useRef(new THREE.Vector3());
-  const startTarget = useRef(new THREE.Vector3());
-
-  const isEarth = selectedObject?.id === "earth";
+  const panStartTarget = useRef(new THREE.Vector3());
 
   useEffect(() => {
     if (selectedObject) {
-      const dist = getDistanceLy(selectedObject.encyclopedia.classificationData);
-      duration.current = 2.0 + Math.min(Math.log10(dist + 1) * 0.5, 4);
-      
+      duration.current = 2.5; // Smooth Stellarium-style cinematic zoom duration
       time.current = 0;
       isAnimating.current = true;
-      setTransitionProgress(0);
       
-      // Capture exact current camera state to prevent ANY teleporting/jumping
-      startPos.current.copy(camera.position);
+      // Place the camera very far away to simulate looking at the night sky
+      // We use a pseudo-random angle based on the object ID so the starfield shifts,
+      // simulating looking at a different patch of the sky and masking any 'teleport' feel.
+      const charCode = selectedObject.id.charCodeAt(0) || 0;
+      const angle = (charCode / 26) * Math.PI * 2;
+      
+      startPos.current.set(
+        Math.cos(angle) * 2000,
+        Math.sin(angle) * 1000,
+        2000
+      );
+
+      // Start by looking slightly off-center to simulate "locating" the object in the sky
+      panStartTarget.current.set(
+        (Math.random() - 0.5) * 500,
+        (Math.random() - 0.5) * 500,
+        0
+      );
+
+      // Instantly jump to the deep space wide-shot
+      camera.position.copy(startPos.current);
+      camera.lookAt(panStartTarget.current);
+      
       if (controls) {
-        startTarget.current.copy((controls as any).target);
         (controls as any).target.set(0, 0, 0);
         (controls as any).enabled = false;
-      } else {
-        startTarget.current.set(0, 0, 0);
       }
     }
   }, [selectedObject?.id, camera, controls]);
@@ -91,46 +103,30 @@ function CameraRig() {
       time.current += delta;
       let progress = time.current / duration.current;
       if (progress > 1) progress = 1;
+
+      // Phase 1: Stellarium Pan (0 to 0.4)
+      // The camera swings to center the tiny dot of the object
+      const panProgress = Math.min(progress / 0.4, 1.0);
+      const panEase = 1 - Math.pow(1 - panProgress, 4); // easeOutQuart
+
+      const currentLookAt = new THREE.Vector3().lerpVectors(panStartTarget.current, new THREE.Vector3(0, 0, 0), panEase);
+      state.camera.lookAt(currentLookAt);
+
+      // Phase 2: Stellarium Telescope Zoom (0 to 1.0)
+      // Uses easeInOutExpo: starts slow, accelerates massively, and decelerates smoothly at the end
+      const zoomEase = progress === 0 
+        ? 0 
+        : progress === 1 
+          ? 1 
+          : progress < 0.5 ? Math.pow(2, 20 * progress - 10) / 2
+          : (2 - Math.pow(2, -20 * progress + 10)) / 2;
+
+      const endPos = new THREE.Vector3(0, 8, 20);
+      state.camera.position.lerpVectors(startPos.current, endPos, zoomEase);
       
-      setTransitionProgress(progress);
-
-      const pEarth = Math.min(progress / 0.15, 1.0); // 0 to 1 for Phase 1
-      const pWarp = Math.max(0, (progress - 0.15) / 0.85); // 0 to 1 for Phase 2
-
-      // Phase 1: Swoop down smoothly from CURRENT position to Earth Horizon
-      if (progress < 0.15) {
-        const ease = pEarth * pEarth * (3 - 2 * pEarth); // smoothstep
-        const earthHorizon = new THREE.Vector3(0, -18, 50);
-        
-        state.camera.position.lerpVectors(startPos.current, earthHorizon, ease);
-        
-        // Smoothly tilt camera to look up at the sky
-        const currentLookAt = new THREE.Vector3().lerpVectors(startTarget.current, new THREE.Vector3(0, 50, 0), ease);
-        state.camera.lookAt(currentLookAt);
-      } 
-      // Phase 2: Blast off from Earth and FTL Warp to the target
-      else {
-        const ease = pWarp < 0.5 
-          ? 4 * pWarp * pWarp * pWarp 
-          : 1 - Math.pow(-2 * pWarp + 2, 3) / 2;
-          
-        const earthHorizon = new THREE.Vector3(0, -18, 50);
-        const endPos = new THREE.Vector3(0, 8, 20);
-        // Deep space midpoint for a parabolic flight path
-        const midPos = new THREE.Vector3(0, 150, 600);
-        
-        // Quadratic bezier curve from Earth -> Deep Space -> Target
-        const q0 = earthHorizon.clone().lerp(midPos, ease);
-        const q1 = midPos.clone().lerp(endPos, ease);
-        state.camera.position.copy(q0.lerp(q1, ease));
-        
-        state.camera.lookAt(0, 0, 0);
-        
-        // FOV warp streak effect
-        const fovEase = Math.sin(pWarp * Math.PI); // 0 -> 1 -> 0
-        (state.camera as THREE.PerspectiveCamera).fov = 55 + (85 * fovEase);
-        state.camera.updateProjectionMatrix();
-      }
+      // Ensure FOV remains natural to mimic a standard telescope/view
+      (state.camera as THREE.PerspectiveCamera).fov = 55;
+      state.camera.updateProjectionMatrix();
 
       if (progress === 1) {
         isAnimating.current = false;
@@ -140,25 +136,6 @@ function CameraRig() {
       }
     }
   });
-
-  if (isAnimating.current && transitionProgress < 1.0 && !isEarth) {
-    const pWarp = Math.max(0, (transitionProgress - 0.15) / 0.85);
-    const opacity = 1 - Math.pow(pWarp, 2); // Fade out as we warp away
-    return (
-      <group>
-        <ambientLight intensity={1} />
-        {/* Fake Earth Horizon centered exactly under the swoop destination */}
-        <mesh position={[0, -118, 50]}>
-          <sphereGeometry args={[100, 64, 64]} />
-          <meshStandardMaterial color="#0033aa" transparent opacity={opacity} roughness={0.8} />
-          <mesh scale={[1.015, 1.015, 1.015]}>
-             <sphereGeometry args={[100, 32, 32]} />
-             <meshBasicMaterial color="#5599ff" transparent opacity={opacity * 0.3} blending={THREE.AdditiveBlending} />
-          </mesh>
-        </mesh>
-      </group>
-    );
-  }
 
   return null;
 }

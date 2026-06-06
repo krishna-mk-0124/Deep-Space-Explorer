@@ -69,17 +69,17 @@ export default function SimulationTimeline() {
   };
 
   return (
-    <div className="absolute top-6 left-1/2 -translate-x-1/2 flex items-center gap-4 px-5 py-3 rounded-full border border-white/10 bg-black/60 backdrop-blur-xl shadow-2xl z-20 w-[90%] max-w-lg pointer-events-auto">
+    <div className="absolute top-6 left-1/2 -translate-x-1/2 flex items-center gap-6 px-6 py-4 rounded-full border border-cyan-500/30 bg-black/80 backdrop-blur-xl shadow-[0_0_30px_rgba(0,255,255,0.1)] z-20 w-[90%] max-w-lg pointer-events-auto">
       {/* Play/Pause Button */}
       <button
         onClick={() => setIsPlaying(!isPlaying)}
-        className={`p-2.5 rounded-full border transition-colors flex items-center justify-center cursor-pointer ${
+        className={`p-3 rounded-full border transition-colors flex items-center justify-center cursor-pointer ${
           isPlaying
-            ? "border-cyan-500/30 bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20"
+            ? "border-cyan-500/30 bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20 shadow-[0_0_15px_rgba(0,255,255,0.1)]"
             : "border-gray-500/30 bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white"
         }`}
       >
-        {isPlaying ? <Pause size={14} /> : <Play size={14} />}
+        {isPlaying ? <Pause size={16} /> : <Play size={16} />}
       </button>
 
       {/* Conditional Timeline scrubber or clock */}
@@ -108,26 +108,30 @@ export default function SimulationTimeline() {
             </div>
           </div>
         ) : (
-          <div className="flex items-center gap-2 select-none">
-            <Clock size={12} className="text-gray-500" />
+          <div className="flex items-center gap-3 select-none">
+            <div className="p-2 bg-cyan-500/10 rounded-full border border-cyan-500/20">
+              <Clock size={16} className="text-cyan-400" />
+            </div>
             <div className="flex flex-col">
-              <span className="text-[8px] uppercase tracking-wider text-gray-600 font-mono">Chronometer</span>
-              <span className="text-xs font-mono font-bold text-gray-300 truncate leading-none mt-0.5">{formatTime()}</span>
+              <span className="text-[9px] uppercase tracking-wider text-gray-500 font-mono">Chronometer</span>
+              <span className="text-sm font-mono font-bold text-white tabular-nums leading-none mt-0.5">{formatTime()}</span>
             </div>
           </div>
         )}
       </div>
 
       {/* Separator */}
-      <div className="h-6 w-px bg-white/10" />
+      <div className="h-8 w-px bg-white/10" />
 
       {/* Speed multiplier control */}
-      <div className="flex items-center gap-2">
-        <span className="text-[9px] uppercase tracking-wider text-gray-600 font-mono select-none">Speed</span>
-        <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-white/5 border border-white/8">
-          <span className="text-xs font-mono font-bold text-cyan-400 w-10 text-center select-none">
+      <div className="flex items-center gap-3">
+        <div className="flex flex-col items-end">
+          <span className="text-[9px] uppercase tracking-wider text-gray-500 font-mono select-none">Speed</span>
+          <span className="text-sm font-mono font-bold text-white tabular-nums w-12 text-right select-none">
             {timeScale.toFixed(1)}x
           </span>
+        </div>
+        <div className="flex items-center gap-1.5 px-2 py-1">
           <input
             type="range"
             min="0.1"
@@ -135,7 +139,7 @@ export default function SimulationTimeline() {
             step="0.1"
             value={timeScale}
             onChange={(e) => setTimeScale(Number(e.target.value))}
-            className="w-16 h-1 cursor-pointer accent-cyan-400"
+            className="w-20 h-1 cursor-pointer accent-cyan-400"
           />
         </div>
       </div>

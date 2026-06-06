@@ -92,7 +92,7 @@ const STAGE_TITLES = [
 ];
 
 // ─── Narration System ────────────────────────────────────────────────────────
-function useNarration(stage: number, muted: boolean, started: boolean) {
+function useNarration(stage: number, muted: boolean, started: boolean, onComplete: () => void) {
   const utterRef = useRef<SpeechSynthesisUtterance | null>(null);
   const [subtitleWords, setSubtitleWords] = useState<string[]>([]);
   const [wordIdx, setWordIdx] = useState(0);
@@ -104,9 +104,13 @@ function useNarration(stage: number, muted: boolean, started: boolean) {
       window.speechSynthesis.cancel();
       if (wordTimerRef.current) clearInterval(wordTimerRef.current);
 
+      if (!text) return; // For stage -1
+
       const words = text.split(" ");
       setSubtitleWords(words);
       setWordIdx(0);
+
+      let textDone = false;
 
       if (!muted) {
         const utter = new SpeechSynthesisUtterance(text);
@@ -126,25 +130,36 @@ function useNarration(stage: number, muted: boolean, started: boolean) {
         );
         if (preferred) utter.voice = preferred;
 
+        utter.onend = () => {
+          setTimeout(onComplete, 800);
+        };
+        utter.onerror = () => {
+          setTimeout(onComplete, 800);
+        };
+
         utterRef.current = utter;
         window.speechSynthesis.speak(utter);
       }
 
-      // Animate subtitle words at ~200ms per word
+      // Animate subtitle words
+      const wordTime = muted ? 350 : 250;
       let idx = 0;
       wordTimerRef.current = setInterval(() => {
         idx++;
         setWordIdx(idx);
         if (idx >= words.length && wordTimerRef.current) {
           clearInterval(wordTimerRef.current);
+          if (muted) {
+            setTimeout(onComplete, 1200);
+          }
         }
-      }, 200);
+      }, wordTime);
     },
-    [muted]
+    [muted, onComplete]
   );
 
   useEffect(() => {
-    if (!started) return;
+    if (!started || stage < 0 || stage >= NARRATIONS.length) return;
     // Small delay so stage transition animation has time to start
     const t = setTimeout(() => speak(NARRATIONS[stage]), 600);
     return () => {
@@ -930,6 +945,7 @@ function CinematicCamera({ stage, elapsed }: { stage: number; elapsed: number })
   const { camera } = useThree();
 
   const targets: Record<number, [number, number, number]> = {
+    "-1": [0, 5, 20],
     0: [0.5, 0.8, 7.5],
     1: [2.5, 5, 18],
     2: [-0.5, 2, 9.5],
@@ -949,8 +965,8 @@ function CinematicCamera({ stage, elapsed }: { stage: number; elapsed: number })
     state.camera.position.y += (finalY - state.camera.position.y) * ease;
     state.camera.position.z += (finalZ - state.camera.position.z) * ease;
 
-    // Slow orbit in galaxy stage
-    if (stage === 4) {
+    // Slow orbit in galaxy stage or start screen
+    if (stage === 4 || stage === -1) {
       const orbit = state.clock.getElapsedTime() * 0.06;
       state.camera.position.x = Math.sin(orbit) * 3;
     }
@@ -992,38 +1008,26 @@ function SubtitleDisplay({ words, visibleCount }: { words: string[]; visibleCoun
 }
 
 // ─── Stage overlay — title + skip ────────────────────────────────────────────
-const STAGE_COLORS = [
-  "from-orange-900/40 to-transparent",
-  "from-teal-950/40 to-transparent",
-  "from-amber-950/40 to-transparent",
-  "from-blue-950/40 to-transparent",
-  "from-transparent to-transparent",
-];
+const STAGE_COLORS: Record<number, string> = {
+  "-1": "from-transparent to-transparent",
+  0: "from-orange-900/40 to-transparent",
+  1: "from-teal-950/40 to-transparent",
+  2: "from-amber-950/40 to-transparent",
+  3: "from-blue-950/40 to-transparent",
+  4: "from-transparent to-transparent",
+};
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function HomePage() {
   const router = useRouter();
   const [started, setStarted] = useState(false);
-  const [stage, setStage] = useState(0);
+  const [stage, setStage] = useState(-1);
   const [transitioning, setTransitioning] = useState(false);
   const [canvasOpacity, setCanvasOpacity] = useState(1);
   const [muted, setMuted] = useState(false);
   const [stageElapsed, setStageElapsed] = useState(0);
   const stageStartRef = useRef(Date.now());
   const elapsedRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const { subtitleWords, wordIdx } = useNarration(stage, muted, started);
-
-  // Track elapsed time within current stage (for camera sweep)
-  useEffect(() => {
-    stageStartRef.current = Date.now();
-    setStageElapsed(0);
-    if (elapsedRef.current) clearInterval(elapsedRef.current);
-    elapsedRef.current = setInterval(() => {
-      setStageElapsed((Date.now() - stageStartRef.current) / 1000);
-    }, 100);
-    return () => { if (elapsedRef.current) clearInterval(elapsedRef.current); };
-  }, [stage]);
 
   // Auto-advance stages with crossfade
   const advanceStage = useCallback(() => {
@@ -1038,18 +1042,24 @@ export default function HomePage() {
     }, 700);
   }, [started, stage, transitioning]);
 
+  const { subtitleWords, wordIdx } = useNarration(stage, muted, started, advanceStage);
+
+  // Track elapsed time within current stage (for camera sweep)
   useEffect(() => {
-    if (started && stage < 4) {
-      const timer = setTimeout(advanceStage, 5800);
-      return () => clearTimeout(timer);
-    }
-  }, [started, stage, advanceStage]);
+    stageStartRef.current = Date.now();
+    setStageElapsed(0);
+    if (elapsedRef.current) clearInterval(elapsedRef.current);
+    elapsedRef.current = setInterval(() => {
+      setStageElapsed((Date.now() - stageStartRef.current) / 1000);
+    }, 100);
+    return () => { if (elapsedRef.current) clearInterval(elapsedRef.current); };
+  }, [stage]);
 
   return (
     <main
       className="relative w-full h-screen overflow-hidden bg-black"
       onClick={() => {
-        if (started && stage < 4 && !transitioning) advanceStage();
+        if (started && stage >= 0 && stage < 4 && !transitioning) advanceStage();
       }}
     >
       {/* ── Start Screen Overlay ── */}
@@ -1057,9 +1067,9 @@ export default function HomePage() {
         {!started && (
           <motion.div
             exit={{ opacity: 0 }}
-            className="absolute inset-0 z-[100] flex flex-col items-center justify-center bg-black"
+            className="absolute inset-0 z-[100] flex flex-col items-center justify-center bg-black/40 backdrop-blur-sm"
           >
-            <h1 className="text-3xl md:text-5xl font-thin text-white tracking-[0.2em] mb-8">
+            <h1 className="text-3xl md:text-5xl font-thin text-white tracking-[0.2em] mb-8 drop-shadow-xl">
               DEEP <span className="font-bold">SPACE</span>
             </h1>
             <button
@@ -1071,12 +1081,20 @@ export default function HomePage() {
                   window.speechSynthesis.speak(unlock);
                 }
                 setStarted(true);
+                // Transition immediately from stage -1 to 0
+                setTransitioning(true);
+                setCanvasOpacity(0);
+                setTimeout(() => {
+                  setStage(0);
+                  setCanvasOpacity(1);
+                  setTransitioning(false);
+                }, 700);
               }}
-              className="px-10 py-4 rounded-full border border-white/20 bg-white/5 hover:bg-white/10 text-white font-mono uppercase tracking-[0.3em] text-sm backdrop-blur-md transition-all hover:scale-105 active:scale-95"
+              className="px-10 py-4 rounded-full border border-white/20 bg-white/10 hover:bg-white/20 text-white font-mono uppercase tracking-[0.3em] text-sm backdrop-blur-md transition-all hover:scale-105 active:scale-95 shadow-2xl"
             >
               Initialize Sequence
             </button>
-            <p className="mt-8 text-white/30 text-xs tracking-widest uppercase font-mono">
+            <p className="mt-8 text-white/50 text-xs tracking-widest uppercase font-mono drop-shadow-md">
               Sound is highly recommended
             </p>
           </motion.div>
@@ -1099,7 +1117,7 @@ export default function HomePage() {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 1.2 }}
-          className={`absolute inset-0 z-5 pointer-events-none bg-gradient-to-b ${STAGE_COLORS[stage]}`}
+          className={`absolute inset-0 z-5 pointer-events-none bg-gradient-to-b ${STAGE_COLORS[stage] || "from-transparent to-transparent"}`}
         />
       </AnimatePresence>
 
@@ -1125,11 +1143,11 @@ export default function HomePage() {
           <ambientLight intensity={0.06} />
           <Stars radius={140} depth={50} count={5500} factor={3.5} saturation={0.4} fade />
 
+          {(stage === -1 || stage === 4) && <StageGrandCosmos />}
           <StageBigBang active={stage === 0} opacity={canvasOpacity} />
           <StageCosmicWeb active={stage === 1} />
           <StageStellarIgnition active={stage === 2} />
           <StageWorldsAwakening active={stage === 3} />
-          {stage === 4 && <StageGrandCosmos />}
 
           <CinematicCamera stage={stage} elapsed={stageElapsed} />
         </Canvas>

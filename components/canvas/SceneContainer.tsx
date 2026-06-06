@@ -58,19 +58,30 @@ function CameraRig() {
   const isAnimating = useRef(false);
   const time = useRef(0);
   const duration = useRef(2);
+  const [transitionProgress, setTransitionProgress] = useState(1);
+
+  const startPos = useRef(new THREE.Vector3());
+  const startTarget = useRef(new THREE.Vector3());
+
+  const isEarth = selectedObject?.id === "earth";
 
   useEffect(() => {
     if (selectedObject) {
       const dist = getDistanceLy(selectedObject.encyclopedia.classificationData);
-      // Base duration 1.5s (local), up to 5.5s for billions of lightyears
-      duration.current = 1.5 + Math.min(Math.log10(dist + 1) * 0.4, 4);
+      duration.current = 2.0 + Math.min(Math.log10(dist + 1) * 0.5, 4);
       
       time.current = 0;
       isAnimating.current = true;
+      setTransitionProgress(0);
       
+      // Capture exact current camera state to prevent ANY teleporting/jumping
+      startPos.current.copy(camera.position);
       if (controls) {
+        startTarget.current.copy((controls as any).target);
         (controls as any).target.set(0, 0, 0);
         (controls as any).enabled = false;
+      } else {
+        startTarget.current.set(0, 0, 0);
       }
     }
   }, [selectedObject?.id, camera, controls]);
@@ -80,43 +91,47 @@ function CameraRig() {
       time.current += delta;
       let progress = time.current / duration.current;
       if (progress > 1) progress = 1;
+      
+      setTransitionProgress(progress);
 
-      // Phase 1: Earth Horizon Lookup (0% to 15% of animation)
-      // Gives the feel of standing on a planet looking up before takeoff
+      const pEarth = Math.min(progress / 0.15, 1.0); // 0 to 1 for Phase 1
+      const pWarp = Math.max(0, (progress - 0.15) / 0.85); // 0 to 1 for Phase 2
+
+      // Phase 1: Swoop down smoothly from CURRENT position to Earth Horizon
       if (progress < 0.15) {
-        const p = progress / 0.15; 
-        const ease = p * p * (3 - 2 * p); // smoothstep
+        const ease = pEarth * pEarth * (3 - 2 * pEarth); // smoothstep
+        const earthHorizon = new THREE.Vector3(0, -18, 50);
         
-        state.camera.position.lerpVectors(
-          new THREE.Vector3(0, -30, 10), // Low angle, looking up
-          new THREE.Vector3(0, 20, 500), // Shoot backward into space
-          ease
-        );
-        state.camera.lookAt(0, 50 * ease, 0);
+        state.camera.position.lerpVectors(startPos.current, earthHorizon, ease);
         
-        // Stretch FOV to simulate warp speed light stretching
-        (state.camera as THREE.PerspectiveCamera).fov = THREE.MathUtils.lerp(55, 140, Math.pow(ease, 2));
-        state.camera.updateProjectionMatrix();
+        // Smoothly tilt camera to look up at the sky
+        const currentLookAt = new THREE.Vector3().lerpVectors(startTarget.current, new THREE.Vector3(0, 50, 0), ease);
+        state.camera.lookAt(currentLookAt);
       } 
-      // Phase 2: FTL Warp Travel to Object (15% to 100%)
+      // Phase 2: Blast off from Earth and FTL Warp to the target
       else {
-        const p = (progress - 0.15) / 0.85;
-        // easeOutExpo for dramatic FTL deceleration at the destination
-        const ease = p === 1 ? 1 : 1 - Math.pow(2, -10 * p);
+        const ease = pWarp < 0.5 
+          ? 4 * pWarp * pWarp * pWarp 
+          : 1 - Math.pow(-2 * pWarp + 2, 3) / 2;
+          
+        const earthHorizon = new THREE.Vector3(0, -18, 50);
+        const endPos = new THREE.Vector3(0, 8, 20);
+        // Deep space midpoint for a parabolic flight path
+        const midPos = new THREE.Vector3(0, 150, 600);
         
-        state.camera.position.lerpVectors(
-          new THREE.Vector3(0, 20, 500),
-          new THREE.Vector3(0, 8, 20), // Target resting position
-          ease
-        );
+        // Quadratic bezier curve from Earth -> Deep Space -> Target
+        const q0 = earthHorizon.clone().lerp(midPos, ease);
+        const q1 = midPos.clone().lerp(endPos, ease);
+        state.camera.position.copy(q0.lerp(q1, ease));
+        
         state.camera.lookAt(0, 0, 0);
         
-        // Relax FOV back to normal
-        (state.camera as THREE.PerspectiveCamera).fov = THREE.MathUtils.lerp(140, 55, ease);
+        // FOV warp streak effect
+        const fovEase = Math.sin(pWarp * Math.PI); // 0 -> 1 -> 0
+        (state.camera as THREE.PerspectiveCamera).fov = 55 + (85 * fovEase);
         state.camera.updateProjectionMatrix();
       }
 
-      // Finish animation
       if (progress === 1) {
         isAnimating.current = false;
         if (controls) {
@@ -125,6 +140,25 @@ function CameraRig() {
       }
     }
   });
+
+  if (isAnimating.current && transitionProgress < 1.0 && !isEarth) {
+    const pWarp = Math.max(0, (transitionProgress - 0.15) / 0.85);
+    const opacity = 1 - Math.pow(pWarp, 2); // Fade out as we warp away
+    return (
+      <group>
+        <ambientLight intensity={1} />
+        {/* Fake Earth Horizon centered exactly under the swoop destination */}
+        <mesh position={[0, -118, 50]}>
+          <sphereGeometry args={[100, 64, 64]} />
+          <meshStandardMaterial color="#0033aa" transparent opacity={opacity} roughness={0.8} />
+          <mesh scale={[1.015, 1.015, 1.015]}>
+             <sphereGeometry args={[100, 32, 32]} />
+             <meshBasicMaterial color="#5599ff" transparent opacity={opacity * 0.3} blending={THREE.AdditiveBlending} />
+          </mesh>
+        </mesh>
+      </group>
+    );
+  }
 
   return null;
 }

@@ -24,7 +24,7 @@ const particleVertexShader = `
   void main() {
     vColor = color;
     vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-    gl_PointSize = aSize * (350.0 / -mvPosition.z);
+    gl_PointSize = aSize * (120.0 / -mvPosition.z);
     gl_Position = projectionMatrix * mvPosition;
     // Distance-based alpha fade
     vAlpha = 1.0 - clamp(-mvPosition.z / 80.0, 0.0, 1.0);
@@ -51,7 +51,7 @@ const starVertexShader = `
   void main() {
     vColor = color;
     vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-    gl_PointSize = aSize * (280.0 / -mvPosition.z);
+    gl_PointSize = aSize * (90.0 / -mvPosition.z);
     gl_Position = projectionMatrix * mvPosition;
   }
 `;
@@ -349,16 +349,16 @@ function StageCosmicWeb({ active }: { active: boolean }) {
       phases[i] = Math.random() * Math.PI * 2;
       sizes[i] = 1.5 + Math.random() * 3.5;
 
-      // Color: teal gas, rose hydrogen-alpha, golden star-forming knots
+      // Color: deep blue dust, faint purple, subtle white stars
       const rand = Math.random();
-      if (rand < 0.35) {
-        colors[i * 3] = 0.0; colors[i * 3 + 1] = 0.8 + Math.random() * 0.2; colors[i * 3 + 2] = 0.9; // teal
-      } else if (rand < 0.65) {
-        colors[i * 3] = 0.95; colors[i * 3 + 1] = 0.2 + Math.random() * 0.15; colors[i * 3 + 2] = 0.35; // rose/H-alpha
-      } else if (rand < 0.82) {
-        colors[i * 3] = 0.95; colors[i * 3 + 1] = 0.85; colors[i * 3 + 2] = 0.2; // golden knots
+      if (rand < 0.5) {
+        colors[i * 3] = 0.05; colors[i * 3 + 1] = 0.15; colors[i * 3 + 2] = 0.35; // deep blue
+      } else if (rand < 0.8) {
+        colors[i * 3] = 0.15; colors[i * 3 + 1] = 0.05; colors[i * 3 + 2] = 0.25; // faint purple
+      } else if (rand < 0.95) {
+        colors[i * 3] = 0.5; colors[i * 3 + 1] = 0.6; colors[i * 3 + 2] = 0.8; // dim white
       } else {
-        colors[i * 3] = 0.6; colors[i * 3 + 1] = 0.2; colors[i * 3 + 2] = 0.9; // purple wisps
+        colors[i * 3] = 0.8; colors[i * 3 + 1] = 0.4; colors[i * 3 + 2] = 0.1; // sparse warm dust
       }
     }
     return [positions, speeds, phases, colors, sizes];
@@ -453,13 +453,13 @@ function StageStellarIgnition({ active }: { active: boolean }) {
       r[i] = rad;
       const nr = (rad - 1.2) / 7;
       if (nr < 0.25) {
-        c[i * 3] = 1; c[i * 3 + 1] = 1; c[i * 3 + 2] = 0.85; // white-yellow hot
+        c[i * 3] = 0.8; c[i * 3 + 1] = 0.6; c[i * 3 + 2] = 0.4; // warm inner dust
       } else if (nr < 0.6) {
-        c[i * 3] = 1; c[i * 3 + 1] = 0.5; c[i * 3 + 2] = 0.05; // orange
+        c[i * 3] = 0.4; c[i * 3 + 1] = 0.2; c[i * 3 + 2] = 0.1; // cool mid dust
       } else {
-        c[i * 3] = 0.6; c[i * 3 + 1] = 0.08; c[i * 3 + 2] = 0.35; // dark violet-red
+        c[i * 3] = 0.1; c[i * 3 + 1] = 0.05; c[i * 3 + 2] = 0.05; // dark outer dust
       }
-      sz[i] = 1.2 + Math.random() * 2.5;
+      sz[i] = 0.5 + Math.random() * 1.2;
     }
     return [p, s, r, c, sz];
   }, []);
@@ -474,8 +474,8 @@ function StageStellarIgnition({ active }: { active: boolean }) {
       s[i] = 5 + Math.random() * 8;
       ph[i] = Math.random() * Math.PI * 2;
       p[i * 3] = p[i * 3 + 1] = p[i * 3 + 2] = 0;
-      c[i * 3] = 0.1 + Math.random() * 0.2; c[i * 3 + 1] = 0.7 + Math.random() * 0.3; c[i * 3 + 2] = 1;
-      sz[i] = 1.8 + Math.random() * 2;
+      c[i * 3] = 0.3; c[i * 3 + 1] = 0.5; c[i * 3 + 2] = 0.9;
+      sz[i] = 0.8 + Math.random() * 1.2;
     }
     return [p, s, ph, c, sz];
   }, []);
@@ -490,8 +490,8 @@ function StageStellarIgnition({ active }: { active: boolean }) {
       s[i] = -(5 + Math.random() * 8);
       ph[i] = Math.random() * Math.PI * 2;
       p[i * 3] = p[i * 3 + 1] = p[i * 3 + 2] = 0;
-      c[i * 3] = 0.4 + Math.random() * 0.2; c[i * 3 + 1] = 0.1; c[i * 3 + 2] = 0.85 + Math.random() * 0.15;
-      sz[i] = 1.8 + Math.random() * 2;
+      c[i * 3] = 0.3; c[i * 3 + 1] = 0.5; c[i * 3 + 2] = 0.9;
+      sz[i] = 0.8 + Math.random() * 1.2;
     }
     return [p, s, ph, c, sz];
   }, []);
@@ -591,26 +591,26 @@ function StageStellarIgnition({ active }: { active: boolean }) {
         <meshBasicMaterial color="#fff4e0" transparent opacity={0} blending={THREE.AdditiveBlending} depthWrite={false} />
       </mesh>
 
-      {/* Star — layered: white hot core + orange corona + diffuse halo */}
+      {/* Star — layered: soft core + faint corona */}
       <mesh ref={starCoreRef}>
         <sphereGeometry args={[0.9, 32, 32]} />
-        <meshBasicMaterial color="#fff8e8" />
+        <meshBasicMaterial color="#ffeedd" />
       </mesh>
       <mesh ref={coronaRef}>
-        <sphereGeometry args={[1.35, 32, 32]} />
-        <meshBasicMaterial color="#ff7700" transparent opacity={0.35} blending={THREE.AdditiveBlending} side={THREE.BackSide} />
+        <sphereGeometry args={[1.1, 32, 32]} />
+        <meshBasicMaterial color="#cc4400" transparent opacity={0.15} blending={THREE.AdditiveBlending} side={THREE.BackSide} />
       </mesh>
       <mesh>
-        <sphereGeometry args={[2.2, 16, 16]} />
-        <meshBasicMaterial color="#ff5500" transparent opacity={0.08} blending={THREE.AdditiveBlending} side={THREE.BackSide} depthWrite={false} />
+        <sphereGeometry args={[1.5, 16, 16]} />
+        <meshBasicMaterial color="#aa2200" transparent opacity={0.04} blending={THREE.AdditiveBlending} side={THREE.BackSide} depthWrite={false} />
       </mesh>
 
       {/* Magnetic corona loops */}
       <group ref={halosRef}>
         {[0, Math.PI / 3, Math.PI * 2 / 3, Math.PI].map((rot, idx) => (
           <mesh key={idx} rotation={[rot * 0.7, rot, rot * 0.4]}>
-            <torusGeometry args={[1.7, 0.025, 6, 60, Math.PI * 0.9]} />
-            <meshBasicMaterial color={idx % 2 === 0 ? "#ff8800" : "#ffcc44"} transparent opacity={0.5} blending={THREE.AdditiveBlending} side={THREE.DoubleSide} />
+            <torusGeometry args={[1.3, 0.015, 6, 60, Math.PI * 0.9]} />
+            <meshBasicMaterial color="#cc5500" transparent opacity={0.15} blending={THREE.AdditiveBlending} side={THREE.DoubleSide} />
           </mesh>
         ))}
       </group>
@@ -866,21 +866,20 @@ function StageGrandCosmos() {
 
       speeds[i] = 0.08 + 1.0 / r;
       phases[i] = Math.random() * Math.PI * 2;
-      // Depth-influenced size: nearer particles slightly larger
-      sizes[i] = 1.2 + Math.random() * 2.2;
+      // Subtle particle sizes for realistic stars
+      sizes[i] = 0.4 + Math.random() * 1.0;
 
-      // Core: golden-white, arms: blue-cyan outer, outer: rose-red
+      // Core: warm faint glow, arms: dim blue dust, outer: dark dust
       if (r < 2.5) {
-        colors[i * 3] = 1; colors[i * 3 + 1] = 0.95; colors[i * 3 + 2] = 0.8; // core white
+        colors[i * 3] = 0.8; colors[i * 3 + 1] = 0.7; colors[i * 3 + 2] = 0.6; // core warm
       } else if (r < 8) {
         const f = (r - 2.5) / 5.5;
-        colors[i * 3] = 1 - f * 0.5; colors[i * 3 + 1] = 0.85 - f * 0.2; colors[i * 3 + 2] = 0.4 + f * 0.5; // gold → blue
+        colors[i * 3] = 0.8 - f * 0.4; colors[i * 3 + 1] = 0.7 - f * 0.3; colors[i * 3 + 2] = 0.6 + f * 0.2; // warm → blue
       } else if (i % 2 === 0) {
         const f = Math.min(1, (r - 8) / 16);
-        colors[i * 3] = 0.2 + f * 0.7; colors[i * 3 + 1] = 0.5 + f * 0.2; colors[i * 3 + 2] = 0.95; // blue arms
+        colors[i * 3] = 0.1 + f * 0.2; colors[i * 3 + 1] = 0.2 + f * 0.2; colors[i * 3 + 2] = 0.5; // faint blue arms
       } else {
-        const f = Math.min(1, (r - 8) / 16);
-        colors[i * 3] = 0.85 + f * 0.15; colors[i * 3 + 1] = 0.2 + f * 0.1; colors[i * 3 + 2] = 0.35 - f * 0.1; // rose outer
+        colors[i * 3] = 0.1; colors[i * 3 + 1] = 0.05; colors[i * 3 + 2] = 0.1; // dark outer dust
       }
     }
     return [positions, speeds, phases, colors, sizes];
@@ -971,15 +970,16 @@ function SubtitleDisplay({ words, visibleCount }: { words: string[]; visibleCoun
       exit={{ opacity: 0 }}
       className="absolute bottom-24 left-1/2 -translate-x-1/2 z-30 w-full max-w-3xl px-8 pointer-events-none"
     >
-      <div className="relative px-6 py-3 text-center">
-        <p className="relative text-lg md:text-xl font-bold text-white tracking-wide leading-relaxed mix-blend-difference">
+      <div className="relative px-8 py-5 rounded-2xl bg-black/70 backdrop-blur-xl border border-white/10 shadow-2xl text-center overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-b from-white/5 to-transparent pointer-events-none" />
+        <p className="relative text-base md:text-lg font-light text-white/95 tracking-wide leading-relaxed">
           {words.map((word, idx) => (
             <motion.span
               key={idx}
               initial={{ opacity: 0, y: 4 }}
               animate={{ opacity: idx < visibleCount ? 1 : 0.1, y: 0 }}
               transition={{ duration: 0.25, delay: 0 }}
-              className="inline-block mr-1"
+              className="inline-block mr-1.5 drop-shadow-md"
             >
               {word}
             </motion.span>
@@ -1148,27 +1148,30 @@ export default function HomePage() {
               initial={{ opacity: 0, y: -8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.9, delay: 0.3 }}
-              className="mb-4 px-4 py-1 rounded-full text-[12px] tracking-[0.45em] text-white font-bold font-mono uppercase mix-blend-difference"
+              className="mb-4 px-5 py-1.5 rounded-full bg-black/60 backdrop-blur-md border border-white/10 text-[10px] tracking-[0.45em] text-white/70 font-mono uppercase shadow-lg"
             >
               Chapter {stage + 1} of 4
             </motion.div>
 
             {/* Stage title */}
-            <motion.h2
+            <motion.div
               initial={{ opacity: 0, scale: 0.94, y: 6 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               transition={{ duration: 1.1, delay: 0.5, ease: "easeOut" }}
-              className="text-3xl md:text-6xl font-bold text-white tracking-[0.35em] text-center select-none mix-blend-difference"
+              className="px-10 py-6 rounded-3xl bg-black/40 backdrop-blur-xl border border-white/10 shadow-2xl relative overflow-hidden"
             >
-              {STAGE_TITLES[stage]}
-            </motion.h2>
+              <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent pointer-events-none" />
+              <h2 className="relative text-2xl md:text-5xl font-thin text-white/90 tracking-[0.4em] text-center select-none drop-shadow-xl">
+                {STAGE_TITLES[stage]}
+              </h2>
+            </motion.div>
 
             {/* Skip hint */}
             <motion.p
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 1, delay: 1.4 }}
-              className="absolute bottom-16 text-white text-[12px] font-bold tracking-[0.4em] uppercase font-mono mix-blend-difference"
+              className="absolute bottom-16 px-4 py-2 rounded-full bg-black/50 backdrop-blur-md text-white/40 text-[9px] tracking-[0.4em] uppercase font-mono"
             >
               Click to advance · Auto in {stage < 4 ? "5s" : ""}
             </motion.p>

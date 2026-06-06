@@ -127,12 +127,46 @@ function CameraRig() {
       const endPos = new THREE.Vector3(0, 8, 20);
       state.camera.position.lerpVectors(startPos.current, endPos, zoomEase);
       
+      // Calculate speed and remaining distance
+      const distLy = getDistanceLy(selectedObject.encyclopedia.classificationData);
+      const remainingDistance = distLy * (1 - zoomEase);
+      
+      let derivative = 0;
+      if (progress > 0 && progress < 1) {
+        if (progress < 0.5) {
+          derivative = 20 * Math.LN2 * Math.pow(2, 20 * progress - 11);
+        } else {
+          derivative = 20 * Math.LN2 * Math.pow(2, -20 * progress + 9);
+        }
+      }
+      // Speed in light-years per second of real time
+      const speedLyPerSec = (derivative / duration.current) * distLy;
+      // Convert to multiples of c (1 c = 1 ly / year, 1 year = 31557600 seconds)
+      // So 1 ly/s is 31,557,600 c
+      const speedC = speedLyPerSec * 31557600;
+
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("zoomUpdate", {
+          detail: {
+            isZooming: true,
+            remainingDistance,
+            speedC,
+            progress
+          }
+        }));
+      }
+
       // Ensure FOV remains natural to mimic a standard telescope/view
       (state.camera as THREE.PerspectiveCamera).fov = 55;
       state.camera.updateProjectionMatrix();
 
       if (progress === 1) {
         isAnimating.current = false;
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("zoomUpdate", {
+            detail: { isZooming: false, remainingDistance: 0, speedC: 0, progress: 1 }
+          }));
+        }
         if (controls) {
           (controls as any).enabled = true;
         }

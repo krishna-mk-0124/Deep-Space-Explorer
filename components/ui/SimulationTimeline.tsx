@@ -69,7 +69,7 @@ export default function SimulationTimeline() {
   };
 
   return (
-    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-4 px-5 py-3 rounded-full border border-white/10 bg-black/60 backdrop-blur-xl shadow-2xl z-20 w-[90%] max-w-lg pointer-events-auto">
+    <div className="absolute top-6 left-1/2 -translate-x-1/2 flex items-center gap-4 px-5 py-3 rounded-full border border-white/10 bg-black/60 backdrop-blur-xl shadow-2xl z-20 w-[90%] max-w-lg pointer-events-auto">
       {/* Play/Pause Button */}
       <button
         onClick={() => setIsPlaying(!isPlaying)}

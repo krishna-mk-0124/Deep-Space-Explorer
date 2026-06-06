@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useMemo } from "react";
-import { useFrame } from "@react-three/fiber";
+import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { CelestialObject, useExplorer } from "@/store/explorerStore";
 
@@ -10,377 +10,244 @@ interface Props {
   object: CelestialObject;
 }
 
-// --- GLSL SHADERS ---
+// ─── VOLUMETRIC RAYMARCHED BLACK HOLE (INTERSTELLAR/GARGANTUA STYLE) ───
 
-const lensVertexShader = `
-  varying vec3 vNormal;
+const bhVertexShader = `
+  varying vec3 vPos;
   void main() {
-    vNormal = normalize(normalMatrix * normal);
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    vPos = (modelMatrix * vec4(position, 1.0)).xyz;
+    gl_Position = projectionMatrix * viewMatrix * vec4(vPos, 1.0);
   }
 `;
 
-const lensFragmentShader = `
+const bhFragmentShader = `
+  uniform vec3 uCameraPos;
   uniform float uTime;
   uniform float uMass;
-  varying vec3 vNormal;
-  void main() {
-    vec3 viewDir = vec3(0.0, 0.0, 1.0);
-    float edge = 1.0 - abs(dot(vNormal, viewDir));
-    float rim = pow(edge, 2.5);
-    vec3 rimColor = vec3(1.0, 0.48 + sin(uTime * 0.6) * 0.08, 0.05);
-    float alpha = rim * uMass * 0.75;
-    gl_FragColor = vec4(rimColor, alpha);
+  uniform vec3 uDiskColor;
+  uniform float uDiskDensity;
+  uniform float uJetIntensity;
+  
+  varying vec3 vPos;
+
+  // PRNG and 3D Noise for Volumetric Plasma
+  float hash(float n) { return fract(sin(n) * 43758.5453123); }
+  float noise(vec3 x) {
+      vec3 p = floor(x);
+      vec3 f = fract(x);
+      f = f * f * (3.0 - 2.0 * f);
+      float n = p.x + p.y * 57.0 + 113.0 * p.z;
+      return mix(
+          mix(mix(hash(n + 0.0), hash(n + 1.0), f.x),
+              mix(hash(n + 57.0), hash(n + 58.0), f.x), f.y),
+          mix(mix(hash(n + 113.0), hash(n + 114.0), f.x),
+              mix(hash(n + 170.0), hash(n + 171.0), f.x), f.y), f.z);
   }
-`;
 
-const diskVertexShader = `
-  uniform float uLensingStrength;
-  uniform float uBhRadius;
-  varying vec3 vWorldPosition;
-  varying vec3 vColor;
-  attribute vec3 color;
-
-  void main() {
-    vColor = color;
-    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-    
-    // Gravitational Lensing Deflection
-    vec4 bhViewPos = modelViewMatrix * vec4(0.0, 0.0, 0.0, 1.0);
-    vec3 relPos = mvPosition.xyz - bhViewPos.xyz;
-
-    if (relPos.z < 0.0) {
-      float d = length(relPos.xy);
-      if (d > 0.05) {
-        float shift = (uLensingStrength * uBhRadius * 1.1) / (d + 0.12);
-        shift = min(shift, 4.0);
-        mvPosition.xy += normalize(relPos.xy) * shift * smoothstep(0.0, -12.0, relPos.z);
+  float fbm(vec3 p) {
+      float f = 0.0;
+      float w = 0.5;
+      for (int i = 0; i < 4; i++) {
+          f += w * noise(p);
+          p *= 2.0;
+          w *= 0.5;
       }
-    }
-
-    vWorldPosition = (modelMatrix * vec4(position, 1.0)).xyz;
-    gl_PointSize = 0.09 * (300.0 / -mvPosition.z);
-    gl_Position = projectionMatrix * mvPosition;
-  }
-`;
-
-const diskFragmentShader = `
-  uniform float uTime;
-  varying vec3 vWorldPosition;
-  varying vec3 vColor;
-
-  void main() {
-    vec2 coord = gl_PointCoord - vec2(0.5);
-    if (length(coord) > 0.5) discard;
-    
-    // Relativistic Doppler Beaming
-    vec3 pos = vWorldPosition;
-    vec3 vel = normalize(vec3(-pos.z, 0.0, pos.x));
-    vec3 obsDir = normalize(vec3(0.0, 0.35, 0.93));
-    float cosTheta = dot(vel, obsDir);
-    
-    float beaming = pow(1.0 + 0.65 * cosTheta, 3.5);
-    float dist = length(pos.xz);
-    float temp = smoothstep(7.0, 1.8, dist);
-    vec3 color = mix(vColor, vec3(1.0, 0.94, 0.84), temp * 0.75);
-    
-    color *= beaming;
-    
-    float alpha = (1.0 - length(coord) * 2.0) * 0.9;
-    gl_FragColor = vec4(color, alpha);
-  }
-`;
-
-const jetVertexShader = `
-  varying vec2 vUv;
-  varying vec3 vNormal;
-  void main() {
-    vUv = uv;
-    vNormal = normalize(normalMatrix * normal);
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-  }
-`;
-
-const jetFragmentShader = `
-  uniform float uTime;
-  uniform float uIntensity;
-  varying vec2 vUv;
-  varying vec3 vNormal;
-
-  float hash(vec2 p) {
-    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
-  }
-  float noise(vec2 p) {
-    vec2 i = floor(p);
-    vec2 f = fract(p);
-    f = f * f * (3.0 - 2.0 * f);
-    return mix(mix(hash(i + vec2(0.0,0.0)), hash(i + vec2(1.0,0.0)), f.x),
-               mix(hash(i + vec2(0.0,1.0)), hash(i + vec2(1.0,1.0)), f.x), f.y);
+      return f;
   }
 
   void main() {
-    vec3 viewDir = vec3(0.0, 0.0, 1.0);
-    float edge = abs(dot(normalize(vNormal), viewDir));
-    float core = pow(edge, 2.5);
+      vec3 ro = uCameraPos;
+      vec3 rd = normalize(vPos - uCameraPos);
 
-    float flow = noise(vec2(vUv.x * 10.0, vUv.y * 3.0 - uTime * 28.0));
-    float distFade = pow(vUv.y, 1.6);
+      // Event Horizon Radius (Schwarzschild)
+      float rs = 1.5 * pow(uMass / 80.0, 0.4); 
+      float rs2 = rs * rs;
 
-    float alpha = core * (0.22 + 0.78 * flow) * distFade * uIntensity;
-    vec3 color = mix(vec3(0.65, 0.75, 1.0), vec3(1.0), core * 0.45);
+      vec3 p = ro;
+      vec3 v = rd;
+      float dt = rs * 0.15; // Adaptive step base
 
-    gl_FragColor = vec4(color, alpha * 0.5);
+      float diskAlpha = 0.0;
+      vec3 diskCol = vec3(0.0);
+      bool hitBH = false;
+
+      // Volumetric Raymarching Loop with Geodesic Bending
+      for(int i = 0; i < 80; i++) {
+          float r2 = dot(p, p);
+          float r = sqrt(r2);
+          
+          if (r < rs) {
+              hitBH = true;
+              break;
+          }
+          if (r > rs * 15.0) {
+              break; // Escaped the bounds
+          }
+
+          // Exact General Relativity Light Bending Approximation
+          // a = -1.5 * rs * L^2 / r^5 * p
+          vec3 h = cross(p, v);
+          float h2 = dot(h, h);
+          vec3 acc = -1.5 * rs * h2 / (r2 * r2 * r) * p; 
+          
+          v += acc * dt;
+          v = normalize(v); // Photons always travel at c
+          p += v * dt;
+
+          // 1. Accumulate Accretion Disk Plasma
+          if (abs(p.y) < rs * 0.15 && r > rs * 1.5 && r < rs * 8.0) {
+              float distFromCenter = r;
+              float angle = atan(p.z, p.x);
+              
+              // Disk Rotation (Keplerian)
+              float spinVel = sqrt(rs / distFromCenter);
+              angle += uTime * spinVel * 2.0;
+              
+              vec3 samplePos = vec3(distFromCenter * 3.0 / rs, angle * 5.0, 0.0);
+              float density = fbm(samplePos);
+              
+              // Structural Falloffs
+              density *= smoothstep(rs * 8.0, rs * 3.0, distFromCenter);
+              density *= smoothstep(rs * 1.5, rs * 2.0, distFromCenter);
+              density *= smoothstep(rs * 0.15, 0.0, abs(p.y)); 
+              
+              // Relativistic Doppler Beaming (Interstellar Effect)
+              vec3 vel = normalize(vec3(-p.z, 0.0, p.x)); // Counter-clockwise
+              float beaming = dot(vel, rd); // Alignment with viewer
+              float doppler = pow((1.0 + beaming * 0.75) / (1.0 - beaming * 0.75), 1.8);
+              
+              float localAlpha = density * (uDiskDensity / 1500.0) * 0.15 * doppler;
+              
+              // Thermodynamics: Hotter/Bluer near Event Horizon
+              vec3 hotColor = mix(uDiskColor, vec3(1.0, 1.0, 1.0), smoothstep(rs * 3.5, rs * 1.5, distFromCenter));
+              vec3 glow = hotColor * density * doppler * 2.0;
+
+              diskCol += glow * (1.0 - diskAlpha);
+              diskAlpha += localAlpha * (1.0 - diskAlpha);
+          }
+
+          // 2. Accumulate Relativistic Jets (if present)
+          if (uJetIntensity > 0.0) {
+              float jetDist = length(p.xz);
+              if (jetDist < rs * 0.8 && abs(p.y) > rs) {
+                  float jetHeightFade = smoothstep(rs * 15.0, rs * 1.5, abs(p.y));
+                  float jetCoreFade = smoothstep(rs * 0.8, 0.0, jetDist);
+                  
+                  // Outward flowing noise
+                  float jDens = fbm(vec3(p.x * 3.0, p.y * 1.0 - sign(p.y) * uTime * 8.0, p.z * 3.0));
+                  jDens *= jetHeightFade * jetCoreFade;
+                  
+                  float localJetAlpha = jDens * uJetIntensity * 0.15;
+                  // Jets are typically ultra-hot plasma (blue/white/violet)
+                  vec3 jetColor = mix(vec3(0.5, 0.7, 1.0), vec3(0.9, 0.5, 1.0), jDens) * uJetIntensity * 2.5;
+                  
+                  diskCol += jetColor * (1.0 - diskAlpha);
+                  diskAlpha += localJetAlpha * (1.0 - diskAlpha);
+              }
+          }
+
+          // Optimization: Early Ray Termination
+          if (diskAlpha > 0.99) break;
+          
+          // Adaptive stepping to avoid overshooting near the singularity
+          dt = min(rs * 0.1, r * 0.12);
+      }
+
+      // Final Lensing Mask Calculation
+      // How much did the ray bend compared to its original path?
+      float bendAmount = length(v - normalize(vPos - uCameraPos));
+      float lensMask = smoothstep(0.02, 0.3, bendAmount);
+
+      float finalAlpha = diskAlpha;
+      if (hitBH) finalAlpha = 1.0;
+      finalAlpha = max(finalAlpha, lensMask * 0.7); // Preserve Einstein Ring visibility
+
+      // Discard untouched rays so the Three.js <Stars/> background is visible
+      if (finalAlpha < 0.01) discard;
+
+      vec3 finalColor = vec3(0.0);
+      if (hitBH) {
+          // Pure pitch black for the Event Horizon
+          finalColor = diskCol; 
+      } else {
+          // We generate a procedural starfield for the heavily lensed background rays
+          // This creates the swirling stars inside the Einstein Ring
+          float star = pow(hash(dot(v, vec3(12.34, 56.78, 91.01))), 200.0) * 3.0;
+          vec3 starCol = vec3(star) * mix(vec3(0.8,0.9,1.0), vec3(1.0,0.8,0.6), hash(v.x));
+          
+          finalColor = diskCol + starCol * lensMask * (1.0 - diskAlpha);
+      }
+
+      gl_FragColor = vec4(finalColor, min(finalAlpha, 1.0));
   }
 `;
 
-function AccretionDisk({
-  color,
-  density,
-  mass,
-  bhRadius,
-  lensStrength,
-  isTDE,
-}: {
-  color: string;
-  density: number;
-  mass: number;
-  bhRadius: number;
-  lensStrength: number;
-  isTDE: boolean;
-}) {
-  const particleCount = Math.min(Math.floor(density), 3500);
-  const diskRef = useRef<THREE.Points>(null);
+export default function BlackHole({ params, object }: Props) {
   const shaderRef = useRef<THREE.ShaderMaterial>(null);
+  const { isPlaying, timeScale } = useExplorer();
 
-  const { timeScale, isPlaying } = useExplorer();
+  const mass = Number(params.mass) || 80;
+  let accretionDiskDensity = Number(params.accretionDiskDensity) || 2000;
+  let accretionDiskColorHex = (params.accretionDiskColor && String(params.accretionDiskColor).startsWith("#")) 
+    ? String(params.accretionDiskColor) 
+    : "#FF6B35";
+    
+  const jetIntensity = Number(params.jetIntensity) || 0.0;
 
-  const geometry = useMemo(() => {
-    const geo = new THREE.BufferGeometry();
-    const positions = new Float32Array(particleCount * 3);
-    const colors = new Float32Array(particleCount * 3);
-    const baseColor = new THREE.Color(color);
+  // ─── SCIENTIFICALLY RESEARCHED COLOR CORRECTIONS ───
+  // Ensure the black holes match their physical properties / iconic depictions
+  if (object.name.includes("Sagittarius A*")) {
+    accretionDiskColorHex = "#FF5511"; // Quiet black hole, visualized as fiery red-orange
+  } else if (object.name.includes("M87")) {
+    accretionDiskColorHex = "#FF2200"; // Deep crimson/orange matching the Event Horizon Telescope photo
+  } else if (object.name.includes("TON 618") || object.name.includes("Quasar")) {
+    accretionDiskColorHex = "#66BBFF"; // Blinding UV/Blue thermal radiation from hyper-luminous quasar
+    accretionDiskDensity *= 2.5; 
+  } else if (object.name.includes("Phoenix A*")) {
+    accretionDiskColorHex = "#E0D0FF"; // Ultra-massive searing white-purple
+    accretionDiskDensity *= 3.0;
+  }
 
-    if (isTDE) {
-      // TIDAL DISRUPTION EVENT (TDE)
-      for (let i = 0; i < particleCount; i++) {
-        const t = i / particleCount;
-        if (i % 2 === 0) {
-          const angle = t * Math.PI * 4.5;
-          const radius = 8.5 * (1.0 - t * 0.76) + (Math.random() - 0.5) * 0.16;
-          positions[i * 3] = Math.cos(angle) * radius;
-          positions[i * 3 + 1] = (Math.random() - 0.5) * 0.08 * radius;
-          positions[i * 3 + 2] = Math.sin(angle) * radius;
-
-          const brightness = 0.95 - t * 0.35;
-          colors[i * 3] = Math.min(baseColor.r * brightness + t * 0.4, 1.0);
-          colors[i * 3 + 1] = baseColor.g * brightness * 0.4 + t * 0.35;
-          colors[i * 3 + 2] = baseColor.b * brightness * 0.05 + t * 0.15;
-        } else {
-          const angle = Math.PI * 0.75 + t * Math.PI * 0.7;
-          const radius = 1.8 + t * 10.5 + (Math.random() - 0.5) * 0.28;
-          positions[i * 3] = Math.cos(angle) * radius;
-          positions[i * 3 + 1] = (Math.random() - 0.5) * 0.12 * radius;
-          positions[i * 3 + 2] = Math.sin(angle) * radius;
-
-          const coolFactor = 1.0 - t * 0.7;
-          colors[i * 3] = baseColor.r * coolFactor;
-          colors[i * 3 + 1] = baseColor.g * coolFactor * 0.25;
-          colors[i * 3 + 2] = baseColor.b * coolFactor * 0.4;
-        }
-      }
-    } else {
-      // STANDARD ACCRETION DISK
-      for (let i = 0; i < particleCount; i++) {
-        const t = i / particleCount;
-        const radius = bhRadius * 1.35 + t * 5.0;
-        const angle = Math.random() * Math.PI * 2;
-        const spread = 0.12 * (1.0 - t * 0.5);
-
-        positions[i * 3] = Math.cos(angle) * radius + (Math.random() - 0.5) * spread;
-        positions[i * 3 + 1] = (Math.random() - 0.5) * spread * 0.35;
-        positions[i * 3 + 2] = Math.sin(angle) * radius + (Math.random() - 0.5) * spread;
-
-        const brightness = 0.92 - t * 0.45;
-        colors[i * 3] = Math.min(baseColor.r * brightness + t * 0.28, 1.0);
-        colors[i * 3 + 1] = baseColor.g * brightness * 0.32;
-        colors[i * 3 + 2] = baseColor.b * brightness * 0.05;
-      }
-    }
-
-    geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-    geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-    return geo;
-  }, [particleCount, color, bhRadius, isTDE]);
+  const diskColor = new THREE.Color(accretionDiskColorHex);
+  const rs = 1.5 * Math.pow(mass / 80.0, 0.4); 
 
   const uniforms = useMemo(() => ({
     uTime: { value: 0 },
-    uLensingStrength: { value: lensStrength },
-    uBhRadius: { value: bhRadius },
-  }), [lensStrength, bhRadius]);
+    uCameraPos: { value: new THREE.Vector3() },
+    uMass: { value: mass },
+    uDiskColor: { value: diskColor },
+    uDiskDensity: { value: accretionDiskDensity },
+    uJetIntensity: { value: jetIntensity },
+  }), [mass, diskColor, accretionDiskDensity, jetIntensity]);
 
   const timeRef = useRef(0);
 
   useFrame((state, delta) => {
     if (isPlaying) {
-      timeRef.current += delta * timeScale;
+      timeRef.current += delta * timeScale * 0.2; // Slow cinematic spin
     }
-    const elapsed = timeRef.current;
-
-    if (diskRef.current && isPlaying) {
-      const speed = isTDE ? 0.08 : 0.13;
-      diskRef.current.rotation.y += delta * speed * (mass / 80) * timeScale;
-    }
+    
     if (shaderRef.current) {
-      shaderRef.current.uniforms.uTime.value = elapsed;
-    }
-  });
-
-  return (
-    <points ref={diskRef} geometry={geometry}>
-      <shaderMaterial
-        ref={shaderRef}
-        vertexShader={diskVertexShader}
-        fragmentShader={diskFragmentShader}
-        uniforms={uniforms}
-        transparent
-        depthWrite={false}
-        blending={THREE.AdditiveBlending}
-      />
-    </points>
-  );
-}
-
-function PhotonRing({ mass }: { mass: number }) {
-  const meshRef = useRef<THREE.Mesh>(null);
-  const { timeScale, isPlaying } = useExplorer();
-
-  useFrame((_, delta) => {
-    if (meshRef.current && isPlaying) {
-      meshRef.current.rotation.y += delta * 0.045 * timeScale;
-      meshRef.current.rotation.z += delta * 0.02 * timeScale;
-    }
-  });
-  const r = 1.5 * Math.pow(mass / 80, 0.4);
-  return (
-    <mesh ref={meshRef}>
-      <torusGeometry args={[r * 1.55, 0.03, 6, 96]} />
-      <meshBasicMaterial
-        color="#ff8c00"
-        transparent
-        opacity={0.5}
-        blending={THREE.AdditiveBlending}
-        depthWrite={false}
-      />
-    </mesh>
-  );
-}
-
-export default function BlackHole({ params, object }: Props) {
-  const lensShaderRef = useRef<THREE.ShaderMaterial>(null);
-  const jetShaderRef = useRef<THREE.ShaderMaterial>(null);
-
-  const { timeScale, isPlaying } = useExplorer();
-
-  const mass = Number(params.mass) || 80;
-  const accretionDiskDensity = Number(params.accretionDiskDensity) || 2000;
-  const accretionDiskColor = (params.accretionDiskColor && String(params.accretionDiskColor).startsWith("#")) ? String(params.accretionDiskColor) : "#FF6B35";
-  const lensStrength = Number(params.lensStrength) || 0.8;
-  const jetIntensity = Number(params.jetIntensity) || 0.6;
-  const isTDE = params.tidalDisruption === 1;
-
-  const bhRadius = 1.5 * Math.pow(mass / 80, 0.4);
-  const jetHeight = 8.5 * jetIntensity;
-  const jetRadius = 0.18 * jetIntensity;
-
-  const jetUniforms = useMemo(() => ({
-    uTime: { value: 0 },
-    uIntensity: { value: jetIntensity },
-  }), [jetIntensity]);
-
-  const timeRef = useRef(0);
-
-  useFrame((state, delta) => {
-    if (isPlaying) {
-      timeRef.current += delta * timeScale;
-    }
-    const elapsed = timeRef.current;
-
-    if (lensShaderRef.current) {
-      lensShaderRef.current.uniforms.uTime.value = elapsed;
-      lensShaderRef.current.uniforms.uMass.value = lensStrength;
-    }
-    if (jetShaderRef.current) {
-      jetShaderRef.current.uniforms.uTime.value = elapsed;
+      shaderRef.current.uniforms.uTime.value = timeRef.current;
+      shaderRef.current.uniforms.uCameraPos.value.copy(state.camera.position);
     }
   });
 
   return (
     <group>
-      {/* Relativistic Volumetric jets */}
-      {jetIntensity > 0.05 &&
-        [1, -1].map((dir) => (
-          <mesh
-            key={dir}
-            position={[0, dir * (bhRadius * 0.95 + jetHeight / 2), 0]}
-            rotation={[dir === 1 ? Math.PI : 0, 0, 0]}
-          >
-            <coneGeometry args={[jetRadius, jetHeight, 16, 1, true]} />
-            <shaderMaterial
-              ref={dir === 1 ? jetShaderRef : null}
-              vertexShader={jetVertexShader}
-              fragmentShader={jetFragmentShader}
-              uniforms={jetUniforms}
-              transparent
-              depthWrite={false}
-              blending={THREE.AdditiveBlending}
-              side={THREE.DoubleSide}
-            />
-          </mesh>
-        ))}
-
-      {/* Lensing rim glow shader */}
+      {/* Bounding Volume for Raymarching Shader */}
+      {/* Must be large enough to contain the heavily lensed rays (16x Schwarzschild radius) */}
       <mesh>
-        <sphereGeometry args={[bhRadius * 1.04, 48, 48]} />
+        <boxGeometry args={[rs * 32, rs * 32, rs * 32]} />
         <shaderMaterial
-          ref={lensShaderRef}
-          vertexShader={lensVertexShader}
-          fragmentShader={lensFragmentShader}
-          uniforms={{ uTime: { value: 0 }, uMass: { value: lensStrength } }}
+          ref={shaderRef}
+          vertexShader={bhVertexShader}
+          fragmentShader={bhFragmentShader}
+          uniforms={uniforms}
           transparent
           depthWrite={false}
-          blending={THREE.AdditiveBlending}
-        />
-      </mesh>
-
-      {/* Solid black event horizon */}
-      <mesh>
-        <sphereGeometry args={[bhRadius, 32, 32]} />
-        <meshBasicMaterial color="#000000" />
-      </mesh>
-
-      {/* Photon sphere ring */}
-      <PhotonRing mass={mass} />
-
-      {/* Accretion disk with Gravitational Lensing & Doppler Beaming */}
-      <AccretionDisk
-        color={accretionDiskColor}
-        density={accretionDiskDensity}
-        mass={mass}
-        bhRadius={bhRadius}
-        lensStrength={lensStrength}
-        isTDE={isTDE}
-      />
-
-      {/* Inner corona glow */}
-      <mesh>
-        <sphereGeometry args={[bhRadius * 1.9, 24, 24]} />
-        <meshBasicMaterial
-          color={accretionDiskColor}
-          transparent
-          opacity={0.05}
-          side={THREE.BackSide}
-          blending={THREE.AdditiveBlending}
-          depthWrite={false}
+          side={THREE.BackSide} // Render on the inside so camera can fly into it
+          blending={THREE.NormalBlending}
         />
       </mesh>
     </group>

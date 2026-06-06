@@ -92,7 +92,7 @@ const STAGE_TITLES = [
 ];
 
 // ─── Narration System ────────────────────────────────────────────────────────
-function useNarration(stage: number, muted: boolean) {
+function useNarration(stage: number, muted: boolean, started: boolean) {
   const utterRef = useRef<SpeechSynthesisUtterance | null>(null);
   const [subtitleWords, setSubtitleWords] = useState<string[]>([]);
   const [wordIdx, setWordIdx] = useState(0);
@@ -144,6 +144,7 @@ function useNarration(stage: number, muted: boolean) {
   );
 
   useEffect(() => {
+    if (!started) return;
     // Small delay so stage transition animation has time to start
     const t = setTimeout(() => speak(NARRATIONS[stage]), 600);
     return () => {
@@ -151,7 +152,7 @@ function useNarration(stage: number, muted: boolean) {
       if (typeof window !== "undefined") window.speechSynthesis?.cancel();
       if (wordTimerRef.current) clearInterval(wordTimerRef.current);
     };
-  }, [stage, speak]);
+  }, [stage, speak, started]);
 
   return { subtitleWords, wordIdx };
 }
@@ -1002,6 +1003,7 @@ const STAGE_COLORS = [
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function HomePage() {
   const router = useRouter();
+  const [started, setStarted] = useState(false);
   const [stage, setStage] = useState(0);
   const [transitioning, setTransitioning] = useState(false);
   const [canvasOpacity, setCanvasOpacity] = useState(1);
@@ -1010,7 +1012,7 @@ export default function HomePage() {
   const stageStartRef = useRef(Date.now());
   const elapsedRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const { subtitleWords, wordIdx } = useNarration(stage, muted);
+  const { subtitleWords, wordIdx } = useNarration(stage, muted, started);
 
   // Track elapsed time within current stage (for camera sweep)
   useEffect(() => {
@@ -1025,7 +1027,7 @@ export default function HomePage() {
 
   // Auto-advance stages with crossfade
   const advanceStage = useCallback(() => {
-    if (stage >= 4 || transitioning) return;
+    if (!started || stage >= 4 || transitioning) return;
     setTransitioning(true);
     // Fade out canvas
     setCanvasOpacity(0);
@@ -1034,22 +1036,53 @@ export default function HomePage() {
       setCanvasOpacity(1);
       setTransitioning(false);
     }, 700);
-  }, [stage, transitioning]);
+  }, [started, stage, transitioning]);
 
   useEffect(() => {
-    if (stage < 4) {
+    if (started && stage < 4) {
       const timer = setTimeout(advanceStage, 5800);
       return () => clearTimeout(timer);
     }
-  }, [stage, advanceStage]);
+  }, [started, stage, advanceStage]);
 
   return (
     <main
       className="relative w-full h-screen overflow-hidden bg-black"
       onClick={() => {
-        if (stage < 4 && !transitioning) advanceStage();
+        if (started && stage < 4 && !transitioning) advanceStage();
       }}
     >
+      {/* ── Start Screen Overlay ── */}
+      <AnimatePresence>
+        {!started && (
+          <motion.div
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-[100] flex flex-col items-center justify-center bg-black"
+          >
+            <h1 className="text-3xl md:text-5xl font-thin text-white tracking-[0.2em] mb-8">
+              DEEP <span className="font-bold">SPACE</span>
+            </h1>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                // Unlock Web Speech API strictly on user interaction
+                if (typeof window !== "undefined" && window.speechSynthesis) {
+                  const unlock = new SpeechSynthesisUtterance("");
+                  window.speechSynthesis.speak(unlock);
+                }
+                setStarted(true);
+              }}
+              className="px-10 py-4 rounded-full border border-white/20 bg-white/5 hover:bg-white/10 text-white font-mono uppercase tracking-[0.3em] text-sm backdrop-blur-md transition-all hover:scale-105 active:scale-95"
+            >
+              Initialize Sequence
+            </button>
+            <p className="mt-8 text-white/30 text-xs tracking-widest uppercase font-mono">
+              Sound is highly recommended
+            </p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Vignette overlay */}
       <div
         className="absolute inset-0 z-10 pointer-events-none"

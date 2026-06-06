@@ -1,6 +1,8 @@
 "use client";
 
-import { Canvas } from "@react-three/fiber";
+import { useEffect, useRef } from "react";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import * as THREE from "three";
 import { OrbitControls, Stars } from "@react-three/drei";
 import { Physics } from "@react-three/rapier";
 import { useExplorer } from "@/store/explorerStore";
@@ -38,6 +40,42 @@ function SimulationSwitch() {
   }
 }
 
+function CameraRig() {
+  const { selectedObject } = useExplorer();
+  const { camera, controls } = useThree();
+  const isAnimating = useRef(false);
+
+  useEffect(() => {
+    if (selectedObject) {
+      // Start zoomed way out for cinematic "zoom in" effect
+      camera.position.set(0, 80, 250);
+      isAnimating.current = true;
+      if (controls) {
+        (controls as any).target.set(0, 0, 0);
+        (controls as any).enabled = false;
+      }
+    }
+  }, [selectedObject?.id, camera, controls]);
+
+  useFrame((state, delta) => {
+    if (isAnimating.current) {
+      const target = new THREE.Vector3(0, 8, 20);
+      // Smoothly interpolate towards the target resting position
+      state.camera.position.lerp(target, 2.5 * delta);
+      
+      // Once close enough, restore OrbitControls and stop animating
+      if (state.camera.position.distanceTo(target) < 0.5) {
+        isAnimating.current = false;
+        if (controls) {
+          (controls as any).enabled = true;
+        }
+      }
+    }
+  });
+
+  return null;
+}
+
 export default function SceneContainer() {
   return (
     <Canvas
@@ -54,6 +92,8 @@ export default function SceneContainer() {
       <Physics gravity={[0, 0, 0]} timeStep="vary">
         <SimulationSwitch />
       </Physics>
+
+      <CameraRig />
 
       <OrbitControls
         enablePan

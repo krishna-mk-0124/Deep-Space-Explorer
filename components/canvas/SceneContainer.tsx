@@ -128,7 +128,7 @@ function CameraRig() {
       state.camera.position.lerpVectors(startPos.current, endPos, zoomEase);
       
       // Calculate speed and remaining distance
-      const distLy = getDistanceLy(selectedObject.encyclopedia.classificationData);
+      const distLy = selectedObject ? getDistanceLy(selectedObject.encyclopedia.classificationData) : 0;
       const remainingDistance = distLy * (1 - zoomEase);
       
       let derivative = 0;

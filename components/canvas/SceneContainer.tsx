@@ -64,7 +64,10 @@ function CameraRig() {
 
   useEffect(() => {
     if (selectedObject) {
-      duration.current = 2.5; // Smooth Stellarium-style cinematic zoom duration
+      const dist = getDistanceLy(selectedObject.encyclopedia.classificationData);
+      // Duration scales based on distance to Earth (between 2.5s and 6.5s)
+      duration.current = 2.5 + Math.min(Math.log10(dist + 1) * 0.6, 4);
+      
       time.current = 0;
       isAnimating.current = true;
       

@@ -440,234 +440,275 @@ function StageCosmicWeb({ active }: { active: boolean }) {
   );
 }
 
-// ─── Stage 2: Stellar Crucible — Star Ignition ────────────────────────────────
+// ─── Stage 2: Stellar Crucible — Star Formation ───────────────────────────────
 function StageStellarIgnition({ active }: { active: boolean }) {
+  const localTime = useRef(0);
+  const cloudRef = useRef<THREE.Points>(null);
   const starCoreRef = useRef<THREE.Mesh>(null);
-  const coronaRef = useRef<THREE.Mesh>(null);
-  const halosRef = useRef<THREE.Group>(null);
-  const diskRef = useRef<THREE.Points>(null);
-  const northJetRef = useRef<THREE.Points>(null);
-  const southJetRef = useRef<THREE.Points>(null);
   const flashRef = useRef<THREE.Mesh>(null);
+  const lightRef = useRef<THREE.PointLight>(null);
+  const jetsRef = useRef<THREE.Points>(null);
 
-  const DISK = 3000;
-  const JET = 600;
+  const N = 15000;
+  const JETS = 1500;
 
-  const [diskPos, diskSp, diskR, diskCol, diskSz] = useMemo(() => {
-    const p = new Float32Array(DISK * 3);
-    const s = new Float32Array(DISK);
-    const r = new Float32Array(DISK);
-    const c = new Float32Array(DISK * 3);
-    const sz = new Float32Array(DISK);
-    for (let i = 0; i < DISK; i++) {
-      const rad = 1.2 + Math.pow(Math.random(), 1.4) * 7;
-      const th = Math.random() * Math.PI * 2;
-      p[i * 3] = Math.cos(th) * rad;
-      p[i * 3 + 1] = (Math.random() - 0.5) * 0.22;
-      p[i * 3 + 2] = Math.sin(th) * rad;
-      s[i] = 2.8 / Math.sqrt(rad); // Keplerian
-      r[i] = rad;
-      const nr = (rad - 1.2) / 7;
-      if (nr < 0.25) {
-        c[i * 3] = 0.8; c[i * 3 + 1] = 0.6; c[i * 3 + 2] = 0.4; // warm inner dust
-      } else if (nr < 0.6) {
-        c[i * 3] = 0.4; c[i * 3 + 1] = 0.2; c[i * 3 + 2] = 0.1; // cool mid dust
+  // Cloud & Disk Particles
+  const [cPos, dPos, cAngle, cCol, cSz, cType] = useMemo(() => {
+    const cloud = new Float32Array(N * 3);
+    const disk = new Float32Array(N * 3);
+    const angle = new Float32Array(N);
+    const col = new Float32Array(N * 3);
+    const sz = new Float32Array(N);
+    const type = new Uint8Array(N); // 0=core, 1=disk, 2=blown
+
+    for (let i = 0; i < N; i++) {
+      // Initial diffuse cloud
+      const cr = 6 + Math.pow(Math.random(), 0.5) * 18;
+      const ctheta = Math.acos(2 * Math.random() - 1);
+      const cphi = Math.random() * Math.PI * 2;
+      cloud[i * 3] = cr * Math.sin(ctheta) * Math.cos(cphi);
+      cloud[i * 3 + 1] = cr * Math.cos(ctheta);
+      cloud[i * 3 + 2] = cr * Math.sin(ctheta) * Math.sin(cphi);
+
+      angle[i] = Math.random() * Math.PI * 2;
+      sz[i] = 1 + Math.random() * 2;
+
+      const rand = Math.random();
+      if (rand < 0.12) {
+        // Core collapse
+        type[i] = 0;
+        disk[i * 3] = (Math.random() - 0.5) * 0.4;
+        disk[i * 3 + 1] = (Math.random() - 0.5) * 0.4;
+        disk[i * 3 + 2] = (Math.random() - 0.5) * 0.4;
+        col[i * 3] = 1; col[i * 3 + 1] = 0.8; col[i * 3 + 2] = 0.5;
+      } else if (rand < 0.65) {
+        // Protoplanetary disk
+        type[i] = 1;
+        const dr = 1.2 + Math.pow(Math.random(), 1.5) * 8;
+        disk[i * 3] = dr; // store radius in X
+        disk[i * 3 + 1] = (Math.random() - 0.5) * 0.3 * (1 + dr * 0.1); // Y thickness
+        disk[i * 3 + 2] = 0; // Z not used directly
+        
+        if (dr < 2.5) {
+           col[i * 3] = 0.9; col[i * 3 + 1] = 0.5; col[i * 3 + 2] = 0.2; // warm inner
+        } else {
+           col[i * 3] = 0.3; col[i * 3 + 1] = 0.4; col[i * 3 + 2] = 0.6; // cold outer
+        }
       } else {
-        c[i * 3] = 0.1; c[i * 3 + 1] = 0.05; c[i * 3 + 2] = 0.05; // dark outer dust
+        // Blown away
+        type[i] = 2;
+        disk[i * 3] = cloud[i * 3] * (2 + Math.random() * 3); 
+        disk[i * 3 + 1] = cloud[i * 3 + 1] * (2 + Math.random() * 3);
+        disk[i * 3 + 2] = cloud[i * 3 + 2] * (2 + Math.random() * 3);
+        col[i * 3] = 0.2; col[i * 3 + 1] = 0.2; col[i * 3 + 2] = 0.3;
       }
-      sz[i] = 0.5 + Math.random() * 1.2;
     }
-    return [p, s, r, c, sz];
+    return [cloud, disk, angle, col, sz, type];
   }, []);
 
-  const [jetNPos, jetNSp, jetNPh, jetNCol, jetNSz] = useMemo(() => {
-    const p = new Float32Array(JET * 3);
-    const s = new Float32Array(JET);
-    const ph = new Float32Array(JET);
-    const c = new Float32Array(JET * 3);
-    const sz = new Float32Array(JET);
-    for (let i = 0; i < JET; i++) {
-      s[i] = 5 + Math.random() * 8;
+  // Bipolar Jets
+  const [jPos, jSp, jPh, jCol, jSz] = useMemo(() => {
+    const p = new Float32Array(JETS * 3);
+    const s = new Float32Array(JETS);
+    const ph = new Float32Array(JETS);
+    const c = new Float32Array(JETS * 3);
+    const sz = new Float32Array(JETS);
+    for (let i = 0; i < JETS; i++) {
+      const isNorth = i % 2 === 0;
+      s[i] = (isNorth ? 1 : -1) * (6 + Math.random() * 10);
       ph[i] = Math.random() * Math.PI * 2;
       p[i * 3] = p[i * 3 + 1] = p[i * 3 + 2] = 0;
-      c[i * 3] = 0.3; c[i * 3 + 1] = 0.5; c[i * 3 + 2] = 0.9;
-      sz[i] = 0.8 + Math.random() * 1.2;
+      c[i * 3] = 0.4; c[i * 3 + 1] = 0.7; c[i * 3 + 2] = 1.0;
+      sz[i] = 0.8 + Math.random() * 1.5;
     }
     return [p, s, ph, c, sz];
   }, []);
 
-  const [jetSPos, jetSSp, jetSPh, jetSCol, jetSSz] = useMemo(() => {
-    const p = new Float32Array(JET * 3);
-    const s = new Float32Array(JET);
-    const ph = new Float32Array(JET);
-    const c = new Float32Array(JET * 3);
-    const sz = new Float32Array(JET);
-    for (let i = 0; i < JET; i++) {
-      s[i] = -(5 + Math.random() * 8);
-      ph[i] = Math.random() * Math.PI * 2;
-      p[i * 3] = p[i * 3 + 1] = p[i * 3 + 2] = 0;
-      c[i * 3] = 0.3; c[i * 3 + 1] = 0.5; c[i * 3 + 2] = 0.9;
-      sz[i] = 0.8 + Math.random() * 1.2;
+  useFrame((_, delta) => {
+    if (!active) {
+      localTime.current = 0;
+      return;
     }
-    return [p, s, ph, c, sz];
-  }, []);
+    localTime.current += delta;
+    const t = localTime.current;
 
-  useFrame((state, delta) => {
-    if (!active) return;
-    const t = state.clock.getElapsedTime();
+    const IGNITION_TIME = 5.0;
+    const COLLAPSE_DURATION = 4.8;
 
-    // Star core pulse
+    // 1. Cloud Collapse to Disk/Core
+    if (cloudRef.current) {
+      const pa = cloudRef.current.geometry.attributes.position as THREE.BufferAttribute;
+      const arr = pa.array as Float32Array;
+      
+      const collapseProgress = Math.min(1, t / COLLAPSE_DURATION);
+      // Ease in-out cubic for collapse
+      const ease = collapseProgress < 0.5 
+        ? 4 * collapseProgress * collapseProgress * collapseProgress 
+        : 1 - Math.pow(-2 * collapseProgress + 2, 3) / 2;
+
+      const spinSpeed = 0.2 + ease * 2.5; // Spins faster as it collapses
+      
+      for (let i = 0; i < N; i++) {
+        const ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
+        const curAngle = cAngle[i] + t * spinSpeed * (cType[i] === 1 ? 1.5 / Math.max(1, dPos[ix]) : 1);
+        
+        if (cType[i] === 1) { // Disk
+          const r0 = Math.sqrt(cPos[ix]*cPos[ix] + cPos[iz]*cPos[iz]);
+          const rTarget = dPos[ix];
+          const rCur = r0 + (rTarget - r0) * ease;
+          const yCur = cPos[iy] + (dPos[iy] - cPos[iy]) * ease;
+          
+          arr[ix] = Math.cos(curAngle) * rCur;
+          arr[iy] = yCur;
+          arr[iz] = Math.sin(curAngle) * rCur;
+        } else if (cType[i] === 0) { // Core
+          arr[ix] = cPos[ix] + (dPos[ix] - cPos[ix]) * ease;
+          arr[iy] = cPos[iy] + (dPos[iy] - cPos[iy]) * ease;
+          arr[iz] = cPos[iz] + (dPos[iz] - cPos[iz]) * ease;
+        } else { // Blown Away
+          if (t < IGNITION_TIME) {
+            // Still collapsing slightly before ignition
+            arr[ix] = cPos[ix] * (1 - ease * 0.3);
+            arr[iy] = cPos[iy] * (1 - ease * 0.3);
+            arr[iz] = cPos[iz] * (1 - ease * 0.3);
+          } else {
+            // Blow away!
+            const blowTime = Math.min(1, (t - IGNITION_TIME) / 4.0);
+            const easeOut = 1 - Math.pow(1 - blowTime, 3);
+            const startX = cPos[ix] * 0.7;
+            const startY = cPos[iy] * 0.7;
+            const startZ = cPos[iz] * 0.7;
+            arr[ix] = startX + (dPos[ix] - startX) * easeOut;
+            arr[iy] = startY + (dPos[iy] - startY) * easeOut;
+            arr[iz] = startZ + (dPos[iz] - startZ) * easeOut;
+          }
+        }
+      }
+      pa.needsUpdate = true;
+    }
+
+    // 2. Core brightening and pulse
     if (starCoreRef.current) {
-      const s = 1 + Math.sin(t * 8) * 0.04 + Math.sin(t * 13) * 0.02;
-      starCoreRef.current.scale.setScalar(s);
+      if (t < IGNITION_TIME) {
+        // Protostar getting hot
+        const heat = Math.min(1, t / IGNITION_TIME);
+        const s = 0.2 + heat * 0.6;
+        starCoreRef.current.scale.setScalar(s);
+        (starCoreRef.current.material as THREE.MeshBasicMaterial).color.setHSL(0.05, 0.8, heat * 0.5);
+      } else {
+        // Ignited star
+        const s = 0.8 + Math.sin(t * 8) * 0.03;
+        starCoreRef.current.scale.setScalar(s);
+        (starCoreRef.current.material as THREE.MeshBasicMaterial).color.setHex(0xffeedd);
+      }
     }
 
-    // Corona breathe
-    if (coronaRef.current) {
-      coronaRef.current.rotation.y += delta * 0.12;
-      coronaRef.current.rotation.z += delta * 0.07;
-      const s = 1 + Math.sin(t * 5) * 0.06;
-      coronaRef.current.scale.setScalar(s);
-    }
-
-    // Halo rings drift
-    if (halosRef.current) {
-      halosRef.current.rotation.y += delta * 0.05;
-      halosRef.current.rotation.x += delta * 0.025;
-    }
-
-    // Ignition flash - softer
+    // 3. Ignition Flash
     if (flashRef.current) {
-      if (t < 1.6) {
-        const p = t / 1.6;
-        flashRef.current.scale.setScalar(1 + p * 12);
-        (flashRef.current.material as THREE.MeshBasicMaterial).opacity = Math.sin(p * Math.PI) * 0.4;
+      if (t >= IGNITION_TIME && t < IGNITION_TIME + 2.0) {
+        const p = (t - IGNITION_TIME) / 2.0; // 0 to 1
+        const flashIntensity = p < 0.1 ? p * 10 : 1 - (p - 0.1) / 0.9;
+        flashRef.current.scale.setScalar(1 + p * 15);
+        (flashRef.current.material as THREE.MeshBasicMaterial).opacity = flashIntensity * 0.8;
       } else {
         (flashRef.current.material as THREE.MeshBasicMaterial).opacity = 0;
       }
     }
 
-    // Protoplanetary disk — Keplerian spin
-    if (diskRef.current) {
-      const pa = diskRef.current.geometry.attributes.position as THREE.BufferAttribute;
-      const arr = pa.array as Float32Array;
-      for (let i = 0; i < DISK; i++) {
-        const ix = i * 3, iz = i * 3 + 2;
-        const angle = t * diskSp[i] * 2.8 + diskR[i] * 0.35;
-        const cur = Math.max(0.6, diskR[i]);
-        arr[ix] = Math.cos(angle) * cur;
-        arr[iz] = Math.sin(angle) * cur;
+    // Light intensity
+    if (lightRef.current) {
+      if (t < IGNITION_TIME) {
+        lightRef.current.intensity = Math.pow(t / IGNITION_TIME, 2) * 2;
+      } else {
+        lightRef.current.intensity = 10 + Math.sin(t * 5) * 1;
       }
-      pa.needsUpdate = true;
     }
 
-    // North jet — helical stream
-    const updateJet = (
-      ref: React.RefObject<THREE.Points | null>,
-      sp: Float32Array,
-      ph: Float32Array,
-      col: Float32Array,
-      count: number
-    ) => {
-      if (!ref.current) return;
-      const pa = ref.current.geometry.attributes.position as THREE.BufferAttribute;
-      const ca = ref.current.geometry.attributes.color as THREE.BufferAttribute;
+    // 4. Jets erupting after ignition
+    if (jetsRef.current && t > IGNITION_TIME) {
+      const pa = jetsRef.current.geometry.attributes.position as THREE.BufferAttribute;
+      const ca = jetsRef.current.geometry.attributes.color as THREE.BufferAttribute;
       const arr = pa.array as Float32Array;
       const carr = ca.array as Float32Array;
-      for (let i = 0; i < count; i++) {
+      
+      const jetT = t - IGNITION_TIME;
+      
+      for (let i = 0; i < JETS; i++) {
         const ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
-        let y = sp[i] * t;
-        const maxLen = 12;
-        if (Math.abs(y) > maxLen) y = y % maxLen;
-        const helixR = 0.06 + 0.04 * Math.abs(y);
-        const rot = y * 4 + t * 16 + ph[i];
-        arr[ix] = Math.cos(rot) * helixR;
-        arr[iy] = y;
-        arr[iz] = Math.sin(rot) * helixR;
-        const fade = Math.max(0, 1 - Math.abs(y) / maxLen);
-        carr[ix] = col[ix] * fade;
-        carr[iy] = col[iy] * fade;
-        carr[iz] = col[iz] * fade;
+        // Particle moves along Y axis
+        let y = jSp[i] * jetT;
+        const maxLen = 18;
+        if (Math.abs(y) > maxLen) {
+           y = y % maxLen; // loop back
+        }
+        
+        // Helical spread
+        const helixR = 0.1 + 0.05 * Math.abs(y);
+        const rot = y * 3 + t * 15 + jPh[i];
+        
+        // Eruption front mask (jets grow outwards initially)
+        const front = Math.abs(jSp[i]) * jetT;
+        if (Math.abs(y) > front) {
+          carr[ix] = carr[iy] = carr[iz] = 0; // invisible if beyond front
+        } else {
+          arr[ix] = Math.cos(rot) * helixR;
+          arr[iy] = y;
+          arr[iz] = Math.sin(rot) * helixR;
+          
+          const fade = Math.max(0, 1 - Math.abs(y) / maxLen);
+          carr[ix] = jCol[ix] * fade;
+          carr[iy] = jCol[iy] * fade;
+          carr[iz] = jCol[iz] * fade;
+        }
       }
       pa.needsUpdate = true;
       ca.needsUpdate = true;
-    };
-
-    updateJet(northJetRef, jetNSp, jetNPh, jetNCol, JET);
-    updateJet(southJetRef, jetSSp, jetSPh, jetSCol, JET);
+    }
   });
 
   if (!active) return null;
 
   return (
     <group>
-      {/* Ignition flash */}
-      <mesh ref={flashRef}>
-        <sphereGeometry args={[1, 8, 8]} />
-        <meshBasicMaterial color="#fff4e0" transparent opacity={0} blending={THREE.AdditiveBlending} depthWrite={false} />
-      </mesh>
+      {/* Dynamic Cloud / Disk */}
+      <points ref={cloudRef}>
+        <bufferGeometry>
+          <bufferAttribute attach="attributes-position" args={[cPos, 3]} />
+          <bufferAttribute attach="attributes-color" args={[cCol, 3]} />
+          <bufferAttribute attach="attributes-aSize" args={[cSz, 1]} />
+        </bufferGeometry>
+        <shaderMaterial vertexShader={particleVertexShader} fragmentShader={particleFragmentShader}
+          vertexColors transparent depthWrite={false} blending={THREE.AdditiveBlending} />
+      </points>
 
-      {/* Star — layered: soft core + faint corona */}
+      {/* Protostar / Star Core */}
       <mesh ref={starCoreRef}>
-        <sphereGeometry args={[0.9, 32, 32]} />
-        <meshBasicMaterial color="#ffeedd" />
-      </mesh>
-      <mesh ref={coronaRef}>
-        <sphereGeometry args={[1.1, 32, 32]} />
-        <meshBasicMaterial color="#cc4400" transparent opacity={0.15} blending={THREE.AdditiveBlending} side={THREE.BackSide} />
-      </mesh>
-      <mesh>
-        <sphereGeometry args={[1.5, 16, 16]} />
-        <meshBasicMaterial color="#aa2200" transparent opacity={0.04} blending={THREE.AdditiveBlending} side={THREE.BackSide} depthWrite={false} />
+        <sphereGeometry args={[1, 32, 32]} />
+        <meshBasicMaterial color="#220000" />
       </mesh>
 
-      {/* Magnetic corona loops */}
-      <group ref={halosRef}>
-        {[0, Math.PI / 3, Math.PI * 2 / 3, Math.PI].map((rot, idx) => (
-          <mesh key={idx} rotation={[rot * 0.7, rot, rot * 0.4]}>
-            <torusGeometry args={[1.3, 0.015, 6, 60, Math.PI * 0.9]} />
-            <meshBasicMaterial color="#cc5500" transparent opacity={0.15} blending={THREE.AdditiveBlending} side={THREE.DoubleSide} />
-          </mesh>
-        ))}
-      </group>
+      {/* Ignition Flash */}
+      <mesh ref={flashRef}>
+        <sphereGeometry args={[1, 16, 16]} />
+        <meshBasicMaterial color="#ffffff" transparent opacity={0} blending={THREE.AdditiveBlending} depthWrite={false} />
+      </mesh>
 
-      {/* Protoplanetary disk */}
-      <points ref={diskRef}>
+      {/* Stellar Jets */}
+      <points ref={jetsRef}>
         <bufferGeometry>
-          <bufferAttribute attach="attributes-position" args={[diskPos, 3]} />
-          <bufferAttribute attach="attributes-color" args={[diskCol, 3]} />
-          <bufferAttribute attach="attributes-aSize" args={[diskSz, 1]} />
+          <bufferAttribute attach="attributes-position" args={[jPos, 3]} />
+          <bufferAttribute attach="attributes-color" args={[jCol, 3]} />
+          <bufferAttribute attach="attributes-aSize" args={[jSz, 1]} />
         </bufferGeometry>
         <shaderMaterial vertexShader={particleVertexShader} fragmentShader={particleFragmentShader}
           vertexColors transparent depthWrite={false} blending={THREE.AdditiveBlending} />
       </points>
 
-      {/* North bipolar jet */}
-      <points ref={northJetRef}>
-        <bufferGeometry>
-          <bufferAttribute attach="attributes-position" args={[jetNPos, 3]} />
-          <bufferAttribute attach="attributes-color" args={[jetNCol, 3]} />
-          <bufferAttribute attach="attributes-aSize" args={[jetNSz, 1]} />
-        </bufferGeometry>
-        <shaderMaterial vertexShader={particleVertexShader} fragmentShader={particleFragmentShader}
-          vertexColors transparent depthWrite={false} blending={THREE.AdditiveBlending} />
-      </points>
-
-      {/* South jet */}
-      <points ref={southJetRef}>
-        <bufferGeometry>
-          <bufferAttribute attach="attributes-position" args={[jetSPos, 3]} />
-          <bufferAttribute attach="attributes-color" args={[jetSCol, 3]} />
-          <bufferAttribute attach="attributes-aSize" args={[jetSSz, 1]} />
-        </bufferGeometry>
-        <shaderMaterial vertexShader={particleVertexShader} fragmentShader={particleFragmentShader}
-          vertexColors transparent depthWrite={false} blending={THREE.AdditiveBlending} />
-      </points>
-
-      <pointLight intensity={8} color="#ffcc88" distance={60} />
+      <pointLight ref={lightRef} intensity={0} color="#ffcc88" distance={80} />
     </group>
   );
 }
+
 
 // ─── Stage 3: Worlds Awakening — Solar System ────────────────────────────────
 function StageWorldsAwakening({ active }: { active: boolean }) {

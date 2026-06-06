@@ -34,6 +34,8 @@ interface ExplorerContextType {
   setTimeScale: (scale: number) => void;
   isPlaying: boolean;
   setIsPlaying: (playing: boolean) => void;
+  isNarratorEnabled: boolean;
+  setIsNarratorEnabled: (enabled: boolean) => void;
 }
 
 const ExplorerContext = createContext<ExplorerContextType | null>(null);
@@ -57,6 +59,7 @@ export function ExplorerProvider({ children }: { children: React.ReactNode }) {
   );
   const [timeScale, setTimeScale] = useState<number>(1.0);
   const [isPlaying, setIsPlaying] = useState<boolean>(true);
+  const [isNarratorEnabled, setIsNarratorEnabled] = useState<boolean>(true);
 
   const setSelectedObject = useCallback(
     (id: string) => {
@@ -84,6 +87,8 @@ export function ExplorerProvider({ children }: { children: React.ReactNode }) {
         setTimeScale,
         isPlaying,
         setIsPlaying,
+        isNarratorEnabled,
+        setIsNarratorEnabled,
       }}
     >
       {children}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useExplorer } from "@/store/explorerStore";
 import {
@@ -14,10 +14,6 @@ import {
   Table2,
   Volume2,
   VolumeX,
-  Radio,
-  Play,
-  Square,
-  MessageSquare,
 } from "lucide-react";
 import factExplanations from "@/data/factExplanations.json";
 
@@ -83,15 +79,6 @@ const TYPE_ACCENTS: Record<string, { border: string; text: string; bg: string; g
   Supernova: { border: "border-pink-500/30", text: "text-pink-400", bg: "bg-pink-500/10", glow: "shadow-pink-500/20" },
 };
 
-type Tab = "physics" | "encyclopedia" | "facts" | "data";
-
-const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
-  { id: "physics",      label: "Physics",      icon: <SlidersHorizontal size={13} /> },
-  { id: "encyclopedia", label: "Overview",     icon: <BookOpen size={13} /> },
-  { id: "facts",        label: "Facts",        icon: <Star size={13} /> },
-  { id: "data",         label: "Data Table",   icon: <Table2 size={13} /> },
-];
-
 function PhysicsSlider({
   config, value, onChange, accent,
 }: {
@@ -134,146 +121,15 @@ function PhysicsSlider({
   );
 }
 
-// Framer motion based audio wave visualizer
-function AudioWaveVisualizer({ active }: { active: boolean }) {
-  return (
-    <div className="flex items-center gap-0.5 h-4 px-1">
-      {Array.from({ length: 5 }).map((_, i) => (
-        <motion.span
-          key={i}
-          animate={active ? { height: [4, 14, 5, 16, 4] } : { height: 3 }}
-          transition={{
-            duration: 0.5 + i * 0.12,
-            repeat: Infinity,
-            ease: "easeInOut",
-          }}
-          className="w-0.5 bg-cyan-400 rounded-full"
-        />
-      ))}
-    </div>
-  );
-}
-
 export default function DashboardOverlay() {
-  const { selectedObject, sliderValues, setSliderValue } = useExplorer();
-  const [activeTab, setActiveTab] = useState<Tab>("encyclopedia");
+  const { selectedObject, sliderValues, setSliderValue, isNarratorEnabled, setIsNarratorEnabled } = useExplorer();
   const [expandedFact, setExpandedFact] = useState<number | null>(null);
-
-  // Speech synthesis states
-  const [isMuted, setIsMuted] = useState<boolean>(true);
-  const [isSpeaking, setIsSpeaking] = useState<boolean>(false);
-  const [subtitle, setSubtitle] = useState<string>("");
 
   if (!selectedObject) return null;
 
   const sliders = SLIDER_CONFIGS[selectedObject.type] || [];
   const accent = TYPE_ACCENTS[selectedObject.type] || TYPE_ACCENTS.Orbital;
   const enc = selectedObject.encyclopedia;
-
-  // Speak method
-  const speakText = useCallback((text: string) => {
-    if (typeof window === "undefined" || !window.speechSynthesis) return;
-    window.speechSynthesis.cancel();
-    setIsSpeaking(false);
-
-    if (isMuted) return;
-
-    const cleanText = text.replace(/[☉⊕*]/g, "").trim();
-    const utterance = new SpeechSynthesisUtterance(cleanText);
-
-    // Pick deep, professional voice
-    const voices = window.speechSynthesis.getVoices();
-    const selectedVoice = voices.find(v => 
-      v.name.includes("Google US English") || 
-      v.name.includes("Microsoft David") || 
-      v.name.includes("Natural") ||
-      (v.lang.startsWith("en-") && v.name.toLowerCase().includes("male"))
-    ) || voices.find(v => v.lang.startsWith("en-")) || voices[0];
-
-    if (selectedVoice) {
-      utterance.voice = selectedVoice;
-    }
-    
-    utterance.rate = 0.84;  // slower tempo for documentary style
-    utterance.pitch = 0.94; // slightly deeper pitch
-
-    utterance.onstart = () => setIsSpeaking(true);
-    utterance.onend = () => setIsSpeaking(false);
-    utterance.onerror = () => setIsSpeaking(false);
-
-    window.speechSynthesis.speak(utterance);
-  }, [isMuted]);
-
-  // Handle selected object changes (Auto-narration)
-  useEffect(() => {
-    if (typeof window !== "undefined" && window.speechSynthesis) {
-      window.speechSynthesis.cancel();
-      setIsSpeaking(false);
-    }
-
-    const introText = `${selectedObject.name}. ${selectedObject.description}`;
-    setSubtitle(introText);
-
-    // Check localStorage for muted state
-    const savedMute = localStorage.getItem("voiceNarratorMuted");
-    const muted = savedMute === "true";
-    setIsMuted(muted);
-
-    if (!muted) {
-      const timer = setTimeout(() => {
-        speakText(introText);
-      }, 500);
-      return () => clearTimeout(timer);
-    }
-  }, [selectedObject.id, speakText]);
-
-  // Handle mute toggles
-  const handleToggleMute = () => {
-    const nextMuted = !isMuted;
-    setIsMuted(nextMuted);
-    localStorage.setItem("voiceNarratorMuted", String(nextMuted));
-    if (nextMuted) {
-      if (typeof window !== "undefined" && window.speechSynthesis) {
-        window.speechSynthesis.cancel();
-      }
-      setIsSpeaking(false);
-    } else {
-      // Speak the current text when unmuting
-      speakText(subtitle);
-    }
-  };
-
-  const handleStopNarrator = () => {
-    if (typeof window !== "undefined" && window.speechSynthesis) {
-      window.speechSynthesis.cancel();
-    }
-    setIsSpeaking(false);
-  };
-
-  // Narrate sections
-  const handleNarrateOverview = () => {
-    if (enc?.overview) {
-      setSubtitle(enc.overview);
-      speakText(enc.overview);
-    }
-  };
-
-  const handleNarratePhysics = () => {
-    if (enc?.physicsHighlights) {
-      setSubtitle(enc.physicsHighlights);
-      speakText(enc.physicsHighlights);
-    }
-  };
-
-  const handleNarrateFact = (factIndex: number) => {
-    const fact = enc?.interestingFacts[factIndex];
-    const explanation = (factExplanations as Record<string, string[]>)[selectedObject.id]?.[factIndex] || "";
-    if (fact) {
-      const text = `${fact}. ${explanation}`;
-      setSubtitle(text);
-      speakText(text);
-    }
-  };
 
   // Get dynamic instantaneous orbital velocity to display in Data table
   const getDynamicVelocity = () => {
@@ -282,7 +138,6 @@ export default function DashboardOverlay() {
     const a = sliderValues.orbitalDistance ?? Number(selectedObject.simulationParams.orbitalDistance) ?? 6;
     
     // Circular orbital speed: v = sqrt(G * M / a)
-    // Scaled to realistic km/s or AU/yr
     const G_GRAVITY = 2.0;
     const baseSpeed = Math.sqrt((G_GRAVITY * centralBodyMass) / a);
     return `${(baseSpeed * 11.2).toFixed(1)} km/s (${(baseSpeed * 2.3).toFixed(2)} AU/yr)`;
@@ -297,10 +152,24 @@ export default function DashboardOverlay() {
       className="w-80 h-full flex flex-col border-l border-white/8 bg-black/75 backdrop-blur-2xl z-10 flex-shrink-0"
     >
       {/* Header */}
-      <div className={`px-4 pt-4 pb-3 border-b ${accent.border} flex-shrink-0`}>
-        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-xs font-bold tracking-wider uppercase mb-2 ${accent.border} ${accent.bg} ${accent.text}`}>
-          {selectedObject.type}
-        </span>
+      <div className={`px-4 pt-4 pb-3 border-b ${accent.border} flex-shrink-0 relative`}>
+        <div className="flex items-center justify-between mb-2">
+          <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-xs font-bold tracking-wider uppercase ${accent.border} ${accent.bg} ${accent.text}`}>
+            {selectedObject.type}
+          </span>
+          <button
+            onClick={() => setIsNarratorEnabled(!isNarratorEnabled)}
+            className={`px-2 py-1 rounded border transition-colors cursor-pointer flex items-center gap-1.5 ${
+              !isNarratorEnabled 
+                ? "border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20" 
+                : "border-cyan-500/30 bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20"
+            }`}
+            title={!isNarratorEnabled ? "Enable Voice Narrator" : "Disable Voice Narrator"}
+          >
+            {!isNarratorEnabled ? <VolumeX size={12} /> : <Volume2 size={12} />}
+            <span className="text-[9px] uppercase font-mono tracking-wider">{isNarratorEnabled ? 'Narrator ON' : 'Narrator OFF'}</span>
+          </button>
+        </div>
         <h2 className="text-white font-bold text-lg leading-tight mb-2 select-none">{selectedObject.name}</h2>
         <div className="flex gap-1.5">
           <div className="flex-1 bg-white/4 border border-white/8 rounded-lg px-2 py-1 text-center">
@@ -324,168 +193,89 @@ export default function DashboardOverlay() {
         </div>
       </div>
 
-      {/* Astro-Narrator Console */}
-      <div className="px-4 py-3 border-b border-white/8 bg-white/1 flex-shrink-0 space-y-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5 text-cyan-400 font-mono text-[10px] uppercase tracking-wider">
-            <Radio size={11} className="animate-pulse" />
-            <span>Astro Narrator</span>
-            <AudioWaveVisualizer active={isSpeaking} />
+      <div className="flex-1 overflow-y-auto scrollbar-thin pb-6">
+        
+        {/* PHYSICS SLIDERS */}
+        <div className="px-4 py-4 space-y-5 border-b border-white/6">
+          <div className="flex items-center gap-2 select-none">
+            <SlidersHorizontal size={12} className="text-gray-500" />
+            <span className="text-xs text-gray-500 tracking-widest uppercase">Physics Controls</span>
           </div>
-          <div className="flex items-center gap-1">
-            {isSpeaking && (
-              <button
-                onClick={handleStopNarrator}
-                className="p-1 rounded hover:bg-white/10 text-gray-400 hover:text-white cursor-pointer"
-                title="Stop Narration"
+          {sliders.map((config) => (
+            <PhysicsSlider
+              key={config.key}
+              config={config}
+              value={sliderValues[config.key] ?? Number(selectedObject.simulationParams[config.key]) ?? config.min}
+              onChange={(v) => setSliderValue(config.key, v)}
+              accent={accent}
+            />
+          ))}
+          <div className="pt-2 border-t border-white/6 select-none">
+            <div className="grid grid-cols-2 gap-2">
+              <div className="bg-white/3 rounded-lg p-2 border border-white/6">
+                <p className="text-gray-600 text-[10px] uppercase font-mono">Render</p>
+                <p className="text-gray-400 text-xs font-mono mt-0.5">WebGL 2.0</p>
+              </div>
+              <div className="bg-white/3 rounded-lg p-2 border border-white/6">
+                <p className="text-gray-600 text-[10px] uppercase font-mono">Physics</p>
+                <p className={`text-xs font-mono mt-0.5 ${accent.text}`}>
+                  {selectedObject.type === "Cluster" ? "Plummer Ptl" :
+                   selectedObject.type === "Binary" ? "Keplerian" :
+                   selectedObject.type === "Orbital" ? "Keplerian" :
+                   selectedObject.type === "BlackHole" ? "GR Lensing" : 
+                   (selectedObject.type === "GalaxyCollision" || selectedObject.type === "Supernova") ? "Event Shader" : "Newtonian"}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* DATA TABLE */}
+        <div className="px-4 py-4 space-y-4 border-b border-white/6">
+          <div className="flex items-center gap-2 mb-1 select-none">
+            <Table2 size={12} className={accent.text} />
+            <span className="text-xs text-gray-500 tracking-widest uppercase">Classification Data</span>
+          </div>
+          <div className={`rounded-xl border ${accent.border} overflow-hidden`}>
+            {Object.entries(enc.classificationData).map(([key, val], i) => (
+              <div
+                key={key}
+                className={`flex items-start gap-2 px-3 py-2.5 ${i % 2 === 0 ? "bg-white/3" : "bg-transparent"} ${i > 0 ? "border-t border-white/6" : ""}`}
               >
-                <Square size={12} />
-              </button>
-            )}
-            <button
-              onClick={handleToggleMute}
-              className={`p-1.5 rounded border transition-colors cursor-pointer ${
-                isMuted 
-                  ? "border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20" 
-                  : "border-cyan-500/30 bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20"
-              }`}
-              title={isMuted ? "Unmute Voice Narration" : "Mute Voice Narration"}
-            >
-              {isMuted ? <VolumeX size={12} /> : <Volume2 size={12} />}
-            </button>
-          </div>
-        </div>
+                <span className="text-gray-600 text-xs font-medium w-24 flex-shrink-0">{key}</span>
+                <span className={`text-xs font-mono flex-1 ${accent.text}`}>{val}</span>
+              </div>
+            ))}
 
-        {/* Captions Display */}
-        <div className="bg-black/40 border border-white/6 rounded-lg p-2 min-h-12 max-h-16 overflow-y-auto scrollbar-none flex items-center">
-          <p className="text-[10px] text-gray-400 italic leading-relaxed w-full">
-            {isMuted ? (
-              <span className="text-red-500/60 not-italic font-mono text-[9px] uppercase tracking-wider block text-center">Narrator Muted. Click icon to listen</span>
-            ) : isSpeaking ? (
-              subtitle
-            ) : (
-              <span className="text-gray-600 block text-center not-italic font-mono text-[9px] uppercase">Standing by... Click below to learn more</span>
-            )}
-          </p>
-        </div>
-
-        {/* Interactive Narrator Controls */}
-        <div className="grid grid-cols-3 gap-1">
-          <button
-            onClick={handleNarrateOverview}
-            disabled={isMuted}
-            className="flex items-center justify-center gap-1 py-1 rounded bg-white/4 hover:bg-white/8 text-[9px] font-mono text-gray-300 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer uppercase"
-          >
-            <BookOpen size={9} />
-            <span>Overview</span>
-          </button>
-          <button
-            onClick={handleNarratePhysics}
-            disabled={isMuted}
-            className="flex items-center justify-center gap-1 py-1 rounded bg-white/4 hover:bg-white/8 text-[9px] font-mono text-gray-300 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer uppercase"
-          >
-            <Zap size={9} />
-            <span>Physics</span>
-          </button>
-          <button
-            onClick={() => handleNarrateFact(Math.floor(Math.random() * (enc?.interestingFacts.length || 1)))}
-            disabled={isMuted}
-            className="flex items-center justify-center gap-1 py-1 rounded bg-white/4 hover:bg-white/8 text-[9px] font-mono text-gray-300 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer uppercase"
-          >
-            <MessageSquare size={9} />
-            <span>Ask Fact</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex border-b border-white/8 flex-shrink-0 bg-black/30 select-none">
-        {TABS.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => {
-              setActiveTab(tab.id);
-              // Narrate the tab selection if unmuted
-              if (!isMuted) {
-                if (tab.id === "encyclopedia") {
-                  speakText(enc?.overview || "");
-                  setSubtitle(enc?.overview || "");
-                } else if (tab.id === "physics") {
-                  speakText("Showing physical parameters and simulation controls.");
-                  setSubtitle("Adjust parameters to manipulate the gravitational field, mass, and coordinates.");
-                } else if (tab.id === "facts") {
-                  speakText(`Select a fact to listen to the astrophysics analysis. There are ${enc?.interestingFacts.length} facts available.`);
-                  setSubtitle("Click any fact card to hear the deep astronomical analysis.");
-                } else if (tab.id === "data") {
-                  speakText("Showing classification telemetry and sensor readings.");
-                  setSubtitle("Sensor telemetry registers specific physical classifications, dimensions, and age.");
-                }
-              }
-            }}
-            className={`flex-1 flex flex-col items-center gap-0.5 py-2 text-xs transition-all cursor-pointer ${
-              activeTab === tab.id
-                ? `${accent.text} border-b-2 ${accent.border} -mb-px bg-white/2`
-                : "text-gray-600 hover:text-gray-400"
-            }`}
-          >
-            {tab.icon}
-            <span className="text-xs" style={{ fontSize: "10px" }}>{tab.label}</span>
-          </button>
-        ))}
-      </div>
-
-      {/* Tab Content */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={activeTab}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.2 }}
-            className="h-full"
-          >
-
-            {/* PHYSICS SLIDERS */}
-            {activeTab === "physics" && (
-              <div className="px-4 py-4 space-y-5">
-                <div className="flex items-center gap-2 select-none">
-                  <SlidersHorizontal size={12} className="text-gray-500" />
-                  <span className="text-xs text-gray-500 tracking-widest uppercase">Physics Controls</span>
-                </div>
-                {sliders.map((config) => (
-                  <PhysicsSlider
-                    key={config.key}
-                    config={config}
-                    value={sliderValues[config.key] ?? Number(selectedObject.simulationParams[config.key]) ?? config.min}
-                    onChange={(v) => setSliderValue(config.key, v)}
-                    accent={accent}
-                  />
-                ))}
-                <div className="pt-2 border-t border-white/6 select-none">
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="bg-white/3 rounded-lg p-2 border border-white/6">
-                      <p className="text-gray-600 text-[10px] uppercase font-mono">Render</p>
-                      <p className="text-gray-400 text-xs font-mono mt-0.5">WebGL 2.0</p>
-                    </div>
-                    <div className="bg-white/3 rounded-lg p-2 border border-white/6">
-                      <p className="text-gray-600 text-[10px] uppercase font-mono">Physics</p>
-                      <p className={`text-xs font-mono mt-0.5 ${accent.text}`}>
-                        {selectedObject.type === "Cluster" ? "Plummer Ptl" :
-                         selectedObject.type === "Binary" ? "Keplerian" :
-                         selectedObject.type === "Orbital" ? "Keplerian" :
-                         selectedObject.type === "BlackHole" ? "GR Lensing" : 
-                         (selectedObject.type === "GalaxyCollision" || selectedObject.type === "Supernova") ? "Event Shader" : "Newtonian"}
-                      </p>
-                    </div>
-                  </div>
-                </div>
+            {/* Append dynamic velocity for Orbital systems */}
+            {selectedObject.type === "Orbital" && (
+              <div className="flex items-start gap-2 px-3 py-2.5 bg-white/3 border-t border-white/6">
+                <span className="text-gray-600 text-xs font-medium w-24 flex-shrink-0">Orbit Speed</span>
+                <span className={`text-xs font-mono flex-1 ${accent.text}`}>{getDynamicVelocity()}</span>
               </div>
             )}
+          </div>
 
-            {/* ENCYCLOPEDIA OVERVIEW */}
-            {activeTab === "encyclopedia" && enc && (
-              <div className="px-4 py-4 space-y-4">
+          <div className="bg-white/3 rounded-lg border border-white/8 p-3">
+            <div className="flex items-center gap-1.5 mb-1.5 select-none">
+              <Info size={11} className="text-gray-600" />
+              <span className="text-xs text-gray-600 uppercase tracking-wider font-mono">Summary</span>
+            </div>
+            <p className="text-xs text-gray-500 leading-relaxed">{selectedObject.description}</p>
+          </div>
+        </div>
+
+        {/* OVERVIEW AND FACTS (ONLY VISIBLE IF NARRATOR IS DISABLED) */}
+        <AnimatePresence>
+          {!isNarratorEnabled && enc && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="overflow-hidden"
+            >
+              {/* ENCYCLOPEDIA OVERVIEW */}
+              <div className="px-4 py-4 space-y-4 border-b border-white/6">
                 <div className="flex items-start gap-2">
                   <BookOpen size={13} className={`${accent.text} flex-shrink-0 mt-0.5`} />
                   <p className="text-gray-400 text-xs leading-relaxed">{enc.overview}</p>
@@ -498,25 +288,9 @@ export default function DashboardOverlay() {
                   </div>
                   <p className="text-gray-400 text-xs leading-relaxed">{enc.physicsHighlights}</p>
                 </div>
-
-                <div className="text-center pt-2">
-                  <button
-                    onClick={() => {
-                      setActiveTab("facts");
-                      if (!isMuted) {
-                        speakText(`Showing ${enc.interestingFacts.length} interesting facts. Click to hear analysis.`);
-                      }
-                    }}
-                    className={`text-[10px] font-mono uppercase tracking-wider ${accent.text} opacity-70 hover:opacity-100 transition-opacity cursor-pointer`}
-                  >
-                    → Read {enc.interestingFacts.length} facts
-                  </button>
-                </div>
               </div>
-            )}
 
-            {/* FACTS */}
-            {activeTab === "facts" && enc && (
+              {/* FACTS */}
               <div className="px-4 py-4 space-y-2">
                 <div className="flex items-center gap-2 mb-3 select-none">
                   <Star size={12} className={accent.text} />
@@ -526,22 +300,12 @@ export default function DashboardOverlay() {
                   const explanation = (factExplanations as Record<string, string[]>)[selectedObject.id]?.[i] ||
                     "Deep astronomical and physical dynamics are currently being evaluated for this object.";
                   return (
-                    <motion.div
+                    <div
                       key={i}
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: i * 0.06 }}
                       className={`rounded-lg border ${accent.border} bg-white/3 overflow-hidden`}
                     >
                       <button
-                        onClick={() => {
-                          const isNowExpanding = expandedFact !== i;
-                          setExpandedFact(isNowExpanding ? i : null);
-                          // Narrate when user expands a fact
-                          if (isNowExpanding) {
-                            handleNarrateFact(i);
-                          }
-                        }}
+                        onClick={() => setExpandedFact(expandedFact === i ? null : i)}
                         className="w-full flex items-start gap-2.5 p-3 text-left cursor-pointer transition-colors hover:bg-white/1.5"
                       >
                         <span className={`flex-shrink-0 w-5 h-5 rounded-full ${accent.bg} ${accent.text} flex items-center justify-center text-[10px] font-bold`}>
@@ -567,68 +331,19 @@ export default function DashboardOverlay() {
                               <span className={`font-mono text-[9px] uppercase tracking-wider ${accent.text}`}>
                                 Astrophysical Analysis
                               </span>
-                              {!isMuted && (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleNarrateFact(i);
-                                  }}
-                                  className="text-[9px] text-cyan-400 hover:text-cyan-300 uppercase font-mono underline cursor-pointer"
-                                >
-                                  Read Voice
-                                </button>
-                              )}
                             </div>
                             {explanation}
                           </motion.div>
                         )}
                       </AnimatePresence>
-                    </motion.div>
+                    </div>
                   );
                 })}
               </div>
-            )}
-
-            {/* DATA TABLE */}
-            {activeTab === "data" && enc && (
-              <div className="px-4 py-4 space-y-4">
-                <div className="flex items-center gap-2 mb-1 select-none">
-                  <Table2 size={12} className={accent.text} />
-                  <span className="text-xs text-gray-500 tracking-widest uppercase">Classification Data</span>
-                </div>
-                <div className={`rounded-xl border ${accent.border} overflow-hidden`}>
-                  {Object.entries(enc.classificationData).map(([key, val], i) => (
-                    <div
-                      key={key}
-                      className={`flex items-start gap-2 px-3 py-2.5 ${i % 2 === 0 ? "bg-white/3" : "bg-transparent"} ${i > 0 ? "border-t border-white/6" : ""}`}
-                    >
-                      <span className="text-gray-600 text-xs font-medium w-24 flex-shrink-0">{key}</span>
-                      <span className={`text-xs font-mono flex-1 ${accent.text}`}>{val}</span>
-                    </div>
-                  ))}
-
-                  {/* Append dynamic velocity for Orbital systems */}
-                  {selectedObject.type === "Orbital" && (
-                    <div className="flex items-start gap-2 px-3 py-2.5 bg-white/3 border-t border-white/6">
-                      <span className="text-gray-600 text-xs font-medium w-24 flex-shrink-0">Orbit Speed</span>
-                      <span className={`text-xs font-mono flex-1 ${accent.text}`}>{getDynamicVelocity()}</span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Quick desc */}
-                <div className="bg-white/3 rounded-lg border border-white/8 p-3">
-                  <div className="flex items-center gap-1.5 mb-1.5 select-none">
-                    <Info size={11} className="text-gray-600" />
-                    <span className="text-xs text-gray-600 uppercase tracking-wider font-mono">Summary</span>
-                  </div>
-                  <p className="text-xs text-gray-500 leading-relaxed">{selectedObject.description}</p>
-                </div>
-              </div>
-            )}
-
-          </motion.div>
+            </motion.div>
+          )}
         </AnimatePresence>
+        
       </div>
     </motion.aside>
   );

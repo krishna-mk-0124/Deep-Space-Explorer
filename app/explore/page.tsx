@@ -6,6 +6,7 @@ import { ExplorerProvider } from "@/store/explorerStore";
 import ObjectSidebar from "@/components/ui/ObjectSidebar";
 import DashboardOverlay from "@/components/ui/DashboardOverlay";
 import SimulationTimeline from "@/components/ui/SimulationTimeline";
+import NarrationOverlay from "@/components/ui/NarrationOverlay";
 
 const SceneContainer = dynamic(
   () => import("@/components/canvas/SceneContainer"),
@@ -35,6 +36,7 @@ export default function ExplorePage() {
           <Suspense fallback={<LoadingFallback />}>
             <SceneContainer />
           </Suspense>
+          <NarrationOverlay />
           <SimulationTimeline />
         </div>
 

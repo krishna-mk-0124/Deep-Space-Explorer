@@ -191,7 +191,9 @@ const bhFragmentShader = `
   }
 `;
 
-export default function BlackHole({ params, object }: Props) {
+import ParticleBlackHole from "./ParticleBlackHole";
+
+function CinematicBlackHole({ params, object }: Props) {
   const shaderRef = useRef<THREE.ShaderMaterial>(null);
   const { isPlaying, timeScale } = useExplorer();
 
@@ -257,4 +259,14 @@ export default function BlackHole({ params, object }: Props) {
       </mesh>
     </group>
   );
+}
+
+export default function BlackHole({ params, object }: Props) {
+  const { blackHoleRenderMode } = useExplorer();
+  
+  if (blackHoleRenderMode === "scientific") {
+    return <ParticleBlackHole params={params} object={object} />;
+  }
+  
+  return <CinematicBlackHole params={params} object={object} />;
 }

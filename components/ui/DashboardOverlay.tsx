@@ -122,7 +122,7 @@ function PhysicsSlider({
 }
 
 export default function DashboardOverlay() {
-  const { selectedObject, sliderValues, setSliderValue, isNarratorEnabled, setIsNarratorEnabled } = useExplorer();
+  const { selectedObject, sliderValues, setSliderValue, isNarratorEnabled, setIsNarratorEnabled, blackHoleRenderMode, setBlackHoleRenderMode } = useExplorer();
   const [expandedFact, setExpandedFact] = useState<number | null>(null);
 
   if (!selectedObject) return null;
@@ -212,10 +212,22 @@ export default function DashboardOverlay() {
           ))}
           <div className="pt-2 border-t border-white/6 select-none">
             <div className="grid grid-cols-2 gap-2">
-              <div className="bg-white/3 rounded-lg p-2 border border-white/6">
-                <p className="text-gray-600 text-[10px] uppercase font-mono">Render</p>
-                <p className="text-gray-400 text-xs font-mono mt-0.5">WebGL 2.0</p>
-              </div>
+              {selectedObject.type === "BlackHole" ? (
+                <div 
+                  className="bg-white/3 rounded-lg p-2 border border-white/6 cursor-pointer hover:bg-white/5 transition-colors"
+                  onClick={() => setBlackHoleRenderMode(blackHoleRenderMode === "cinematic" ? "scientific" : "cinematic")}
+                >
+                  <p className="text-gray-600 text-[10px] uppercase font-mono">Render Mode</p>
+                  <p className={`text-xs font-mono mt-0.5 ${accent.text}`}>
+                    {blackHoleRenderMode === "cinematic" ? "Gargantua" : "Particles"}
+                  </p>
+                </div>
+              ) : (
+                <div className="bg-white/3 rounded-lg p-2 border border-white/6">
+                  <p className="text-gray-600 text-[10px] uppercase font-mono">Render</p>
+                  <p className="text-gray-400 text-xs font-mono mt-0.5">WebGL 2.0</p>
+                </div>
+              )}
               <div className="bg-white/3 rounded-lg p-2 border border-white/6">
                 <p className="text-gray-600 text-[10px] uppercase font-mono">Physics</p>
                 <p className={`text-xs font-mono mt-0.5 ${accent.text}`}>

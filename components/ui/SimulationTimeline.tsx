@@ -127,20 +127,27 @@ export default function SimulationTimeline() {
       <div className="flex items-center gap-3">
         <div className="flex flex-col items-end">
           <span className="text-[9px] uppercase tracking-wider text-gray-500 font-mono select-none">Speed</span>
-          <span className="text-sm font-mono font-bold text-white tabular-nums w-12 text-right select-none">
-            {timeScale.toFixed(1)}x
-          </span>
         </div>
-        <div className="flex items-center gap-1.5 px-2 py-1">
-          <input
-            type="range"
-            min="0.1"
-            max="10.0"
-            step="0.1"
-            value={timeScale}
-            onChange={(e) => setTimeScale(Number(e.target.value))}
-            className="w-20 h-1 cursor-pointer accent-cyan-400"
-          />
+        <div className="flex items-center gap-1 bg-white/5 p-1 rounded-lg border border-white/10">
+          {[
+            { label: "Realtime", value: 0.000000001 },
+            { label: "1x", value: 1.0 },
+            { label: "10x", value: 10.0 },
+            { label: "100x", value: 100.0 },
+            { label: "1000x", value: 1000.0 }
+          ].map(opt => (
+            <button
+              key={opt.label}
+              onClick={() => setTimeScale(opt.value)}
+              className={`px-2 py-1 rounded text-[10px] font-mono transition-colors ${
+                (timeScale === opt.value || (opt.label === "Realtime" && timeScale < 0.01))
+                  ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/50"
+                  : "bg-transparent text-gray-400 border border-transparent hover:bg-white/10 hover:text-white"
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
         </div>
       </div>
     </div>

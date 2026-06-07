@@ -148,25 +148,7 @@ const bhFragmentShader = `
               }
           }
 
-          // 2. Accumulate Relativistic Jets (if present)
-          if (uJetIntensity > 0.0) {
-              float jetDist = length(p.xz);
-              if (jetDist < rs * 0.8 && abs(p.y) > rs) {
-                  float jetHeightFade = smoothstep(rs * 15.0, rs * 1.5, abs(p.y));
-                  float jetCoreFade = smoothstep(rs * 0.8, 0.0, jetDist);
-                  
-                  // Fast streaming animation for jets
-                  float jDens = fbm(vec3(p.x * 4.0, p.y * 1.5 - sign(p.y) * uTime * 35.0, p.z * 4.0));
-                  jDens = pow(jDens, 1.5); // Increase contrast of the stream
-                  jDens *= jetHeightFade * jetCoreFade;
-                  
-                  float localJetAlpha = jDens * uJetIntensity * 0.25;
-                  vec3 jetColor = mix(vec3(0.3, 0.6, 1.0), vec3(0.9, 0.8, 1.0), jDens) * uJetIntensity * 5.0;
-                  
-                  diskCol += jetColor * (1.0 - diskAlpha);
-                  diskAlpha += localJetAlpha * (1.0 - diskAlpha);
-              }
-          }
+          // No volumetric jets here anymore. We will use explicit Cone geometry jets to match the particle system.
 
           if (diskAlpha > 0.99) break;
       }
@@ -199,10 +181,53 @@ const bhFragmentShader = `
   }
 `;
 
+const jetVertexShader = `
+  varying vec2 vUv;
+  varying vec3 vNormal;
+  void main() {
+    vUv = uv;
+    vNormal = normalize(normalMatrix * normal);
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+const jetFragmentShader = `
+  uniform float uTime;
+  uniform float uIntensity;
+  varying vec2 vUv;
+  varying vec3 vNormal;
+
+  float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+  }
+  float noise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash(i + vec2(0.0,0.0)), hash(i + vec2(1.0,0.0)), f.x),
+               mix(hash(i + vec2(0.0,1.0)), hash(i + vec2(1.0,1.0)), f.x), f.y);
+  }
+
+  void main() {
+    vec3 viewDir = vec3(0.0, 0.0, 1.0);
+    float edge = abs(dot(normalize(vNormal), viewDir));
+    float core = pow(edge, 2.5);
+
+    float flow = noise(vec2(vUv.x * 10.0, vUv.y * 3.0 - uTime * 28.0));
+    float distFade = pow(vUv.y, 1.6);
+
+    float alpha = core * (0.22 + 0.78 * flow) * distFade * uIntensity;
+    vec3 color = mix(vec3(0.65, 0.75, 1.0), vec3(1.0), core * 0.45);
+
+    gl_FragColor = vec4(color, alpha * 0.5);
+  }
+`;
+
 import ParticleBlackHole from "./ParticleBlackHole";
 
 function CinematicBlackHole({ params, object }: Props) {
   const shaderRef = useRef<THREE.ShaderMaterial>(null);
+  const jetShaderRef = useRef<THREE.ShaderMaterial>(null);
   const { isPlaying, timeScale } = useExplorer();
 
   const mass = Number(params.mass) || 80;
@@ -227,6 +252,10 @@ function CinematicBlackHole({ params, object }: Props) {
 
   const diskColor = new THREE.Color(accretionDiskColorHex);
   const rs = 1.5 * Math.pow(mass / 80.0, 0.4); 
+  const visualScale = 2.6;
+  const bhRadius = rs * visualScale;
+  const jetHeight = 8.5 * jetIntensity * visualScale;
+  const jetRadius = 0.18 * jetIntensity * visualScale;
 
   const uniforms = useMemo(() => ({
     uTime: { value: 0 },
@@ -236,6 +265,11 @@ function CinematicBlackHole({ params, object }: Props) {
     uDiskDensity: { value: accretionDiskDensity },
     uJetIntensity: { value: jetIntensity },
   }), [mass, diskColor, accretionDiskDensity, jetIntensity]);
+
+  const jetUniforms = useMemo(() => ({
+    uTime: { value: 0 },
+    uIntensity: { value: jetIntensity },
+  }), [jetIntensity]);
 
   const timeRef = useRef(0);
 
@@ -248,10 +282,34 @@ function CinematicBlackHole({ params, object }: Props) {
       shaderRef.current.uniforms.uTime.value = timeRef.current;
       shaderRef.current.uniforms.uCameraPos.value.copy(state.camera.position);
     }
+    if (jetShaderRef.current) {
+      jetShaderRef.current.uniforms.uTime.value = timeRef.current * 0.4;
+    }
   });
 
   return (
     <group>
+      {jetIntensity > 0.05 &&
+        [1, -1].map((dir) => (
+          <mesh
+            key={dir}
+            position={[0, dir * (bhRadius * 0.95 + jetHeight / 2), 0]}
+            rotation={[dir === 1 ? Math.PI : 0, 0, 0]}
+          >
+            <coneGeometry args={[jetRadius, jetHeight, 16, 1, true]} />
+            <shaderMaterial
+              ref={dir === 1 ? jetShaderRef : null}
+              vertexShader={jetVertexShader}
+              fragmentShader={jetFragmentShader}
+              uniforms={jetUniforms}
+              transparent
+              depthWrite={false}
+              blending={THREE.AdditiveBlending}
+              side={THREE.DoubleSide}
+            />
+          </mesh>
+        ))}
+
       <mesh>
         <boxGeometry args={[rs * 45, rs * 45, rs * 45]} />
         <shaderMaterial

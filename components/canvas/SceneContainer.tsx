@@ -124,7 +124,7 @@ function CameraRig() {
           : progress < 0.5 ? Math.pow(2, 20 * progress - 10) / 2
           : (2 - Math.pow(2, -20 * progress + 10)) / 2;
 
-      const endPos = new THREE.Vector3(0, 12, 35);
+      const endPos = new THREE.Vector3(0, 15, 65);
       state.camera.position.lerpVectors(startPos.current, endPos, zoomEase);
       
       // Calculate speed and remaining distance
@@ -180,7 +180,7 @@ function CameraRig() {
 export default function SceneContainer() {
   return (
     <Canvas
-      camera={{ position: [0, 12, 35], fov: 55 }}
+      camera={{ position: [0, 15, 65], fov: 55 }}
       style={{ width: "100%", height: "100%" }}
       gl={{ antialias: true, alpha: false }}
     >
@@ -201,7 +201,7 @@ export default function SceneContainer() {
         enableZoom
         enableRotate
         minDistance={3}
-        maxDistance={80}
+        maxDistance={250}
         zoomSpeed={0.8}
         rotateSpeed={0.5}
         makeDefault

@@ -51,6 +51,7 @@ const diskVertexShader = `
   varying vec3 vWorldPosition;
   varying vec3 vLocalPosition;
   varying vec3 vColor;
+  varying float vCosTheta;
   attribute vec3 color;
   attribute float aSize;
 
@@ -99,6 +100,12 @@ const diskVertexShader = `
 
     vWorldPosition = (modelMatrix * vec4(pos, 1.0)).xyz;
     
+    // Doppler beaming calculation
+    vec3 localVel = normalize(vec3(pos.z, 0.0, -pos.x));
+    vec3 worldVel = normalize((modelMatrix * vec4(localVel, 0.0)).xyz);
+    vec3 obsDir = normalize(cameraPosition - vWorldPosition);
+    vCosTheta = dot(worldVel, obsDir);
+    
     // Dynamic point size
     float flicker = 1.0 + 0.4 * sin(uTime * 12.0 + r * 20.0);
     gl_PointSize = aSize * flicker * (300.0 / -mvPosition.z);
@@ -111,6 +118,7 @@ const diskFragmentShader = `
   varying vec3 vWorldPosition;
   varying vec3 vLocalPosition;
   varying vec3 vColor;
+  varying float vCosTheta;
 
   void main() {
     vec2 coord = gl_PointCoord - vec2(0.5);
@@ -119,17 +127,8 @@ const diskFragmentShader = `
     
     float alpha = smoothstep(0.5, 0.1, distToCenter);
 
-    // Relativistic Doppler Beaming
-    // Velocity is tangent to the rotation path. Since angle = -uTime * speed, rotation is clockwise.
-    // So the local velocity vector is (localPos.z, 0.0, -localPos.x)
-    vec3 localVel = normalize(vec3(vLocalPosition.z, 0.0, -vLocalPosition.x));
-    vec3 worldVel = normalize((modelMatrix * vec4(localVel, 0.0)).xyz);
-    
-    vec3 obsDir = normalize(cameraPosition - vWorldPosition);
-    float cosTheta = dot(worldVel, obsDir);
-    
-    // Stronger beaming
-    float beaming = pow(1.0 + 0.8 * cosTheta, 4.0);
+    // Stronger beaming using precalculated vCosTheta from vertex shader
+    float beaming = pow(1.0 + 0.8 * vCosTheta, 4.0);
     
     // Temperature gradient
     float r = length(vLocalPosition.xz);

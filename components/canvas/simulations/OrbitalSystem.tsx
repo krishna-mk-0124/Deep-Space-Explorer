@@ -140,11 +140,11 @@ const planetFragmentShader = `
     vec3 atmColor = uColor;
     
     if (uPlanetType < 0.5) {
-      // TERRESTRIAL (Earth-like land & ocean)
+      // TERRESTRIAL (Procedural Alien Worlds)
       float land = fbm(vPosition * 3.8);
-      vec3 oceanCol = vec3(0.06, 0.22, 0.58);
-      vec3 landCol = vec3(0.12, 0.42, 0.18);
-      vec3 desertCol = vec3(0.62, 0.52, 0.32);
+      vec3 oceanCol = uColor * 0.25; 
+      vec3 landCol = uColor * 0.85;        
+      vec3 desertCol = uColor * 1.5; 
       
       if (land > 0.48) {
         color = mix(landCol, desertCol, (land - 0.48) * 3.0);
@@ -157,7 +157,7 @@ const planetFragmentShader = `
       if (clouds > 0.52) {
         color = mix(color, vec3(0.95), (clouds - 0.52) * 1.8);
       }
-      atmColor = vec3(0.35, 0.65, 1.0);
+      atmColor = uColor * 1.2;
       
     } else if (uPlanetType < 1.5) {
       // GAS GIANT (Banded winds + storm spots)

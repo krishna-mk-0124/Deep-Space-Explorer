@@ -49,6 +49,7 @@ const diskVertexShader = `
   uniform float uMass;
 
   varying vec3 vWorldPosition;
+  varying vec3 vLocalPosition;
   varying vec3 vColor;
   attribute vec3 color;
   attribute float aSize;
@@ -67,7 +68,8 @@ const diskVertexShader = `
       speed *= 0.4;
     }
     
-    float angle = uTime * speed;
+    // Reverse direction to match Cinematic shader
+    float angle = -uTime * speed;
     float c = cos(angle);
     float s = sin(angle);
     
@@ -77,6 +79,7 @@ const diskVertexShader = `
     // Turbulence / vertical oscillation
     pos.y += sin(uTime * 4.0 + r * 6.0) * 0.08 * min(1.0, r / uBhRadius);
 
+    vLocalPosition = pos;
     vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
     
     // Gravitational Lensing (Ray-bending approximation for particles behind BH)
@@ -89,7 +92,8 @@ const diskVertexShader = `
       if (d > 0.05) {
         float shift = (er * er) / (d + 0.1);
         shift = min(shift, uBhRadius * 3.5); 
-        mvPosition.xy += normalize(relPos.xy) * shift * smoothstep(0.0, -uBhRadius * 3.0, relPos.z);
+        // Fix undefined smoothstep behavior when edge0 > edge1
+        mvPosition.xy += normalize(relPos.xy) * shift * smoothstep(0.0, uBhRadius * 3.0, -relPos.z);
       }
     }
 
@@ -105,6 +109,7 @@ const diskVertexShader = `
 const diskFragmentShader = `
   uniform float uTime;
   varying vec3 vWorldPosition;
+  varying vec3 vLocalPosition;
   varying vec3 vColor;
 
   void main() {
@@ -115,16 +120,19 @@ const diskFragmentShader = `
     float alpha = smoothstep(0.5, 0.1, distToCenter);
 
     // Relativistic Doppler Beaming
-    vec3 pos = vWorldPosition;
-    vec3 vel = normalize(vec3(-pos.z, 0.0, pos.x));
+    // Velocity is tangent to the rotation path. Since angle = -uTime * speed, rotation is clockwise.
+    // So the local velocity vector is (localPos.z, 0.0, -localPos.x)
+    vec3 localVel = normalize(vec3(vLocalPosition.z, 0.0, -vLocalPosition.x));
+    vec3 worldVel = normalize((modelMatrix * vec4(localVel, 0.0)).xyz);
+    
     vec3 obsDir = normalize(cameraPosition - vWorldPosition);
-    float cosTheta = dot(vel, obsDir);
+    float cosTheta = dot(worldVel, obsDir);
     
     // Stronger beaming
     float beaming = pow(1.0 + 0.8 * cosTheta, 4.0);
     
     // Temperature gradient
-    float r = length(pos.xz);
+    float r = length(vLocalPosition.xz);
     float temp = smoothstep(12.0, 1.5, r);
     vec3 hotColor = mix(vColor, vec3(1.0, 0.95, 0.85), temp * 0.9);
     

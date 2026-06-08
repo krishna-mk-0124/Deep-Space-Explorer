@@ -127,8 +127,8 @@ function CameraRig() {
       let endZ = 65;
       let endY = 15;
       if (selectedObject?.type === "Cluster") {
-        endZ = 18; // Closer view for clusters to hide square image boundaries
-        endY = 2;
+        endZ = 9; // Extremely close view to completely hide image boundaries
+        endY = 1;
       }
       const endPos = new THREE.Vector3(0, endY, endZ);
       state.camera.position.lerpVectors(startPos.current, endPos, zoomEase);

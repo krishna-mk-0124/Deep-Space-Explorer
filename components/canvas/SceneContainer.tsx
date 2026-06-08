@@ -124,7 +124,13 @@ function CameraRig() {
           : progress < 0.5 ? Math.pow(2, 20 * progress - 10) / 2
           : (2 - Math.pow(2, -20 * progress + 10)) / 2;
 
-      const endPos = new THREE.Vector3(0, 15, 65);
+      let endZ = 65;
+      let endY = 15;
+      if (selectedObject?.type === "Cluster") {
+        endZ = 18; // Closer view for clusters to hide square image boundaries
+        endY = 2;
+      }
+      const endPos = new THREE.Vector3(0, endY, endZ);
       state.camera.position.lerpVectors(startPos.current, endPos, zoomEase);
       
       // Calculate speed and remaining distance

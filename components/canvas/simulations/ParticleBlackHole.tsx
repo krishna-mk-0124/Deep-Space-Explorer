@@ -69,8 +69,8 @@ const diskVertexShader = `
       speed *= 0.4;
     }
     
-    // Standard Counter-Clockwise rotation (Matches Cinematic Shader)
-    float angle = uTime * speed;
+    // Match Cinematic Shader visual flow: Left -> Right (Clockwise)
+    float angle = -uTime * speed;
     float c = cos(angle);
     float s = sin(angle);
     
@@ -100,6 +100,7 @@ const diskVertexShader = `
     vWorldPosition = (modelMatrix * vec4(pos, 1.0)).xyz;
     
     // Doppler beaming calculation
+    // Match Cinematic Shader Doppler: Right side bright (Counter-Clockwise velocity vector)
     vec3 localVel = normalize(vec3(-pos.z, 0.0, pos.x));
     vec3 worldVel = normalize((modelMatrix * vec4(localVel, 0.0)).xyz);
     vec3 obsDir = normalize(cameraPosition - vWorldPosition);

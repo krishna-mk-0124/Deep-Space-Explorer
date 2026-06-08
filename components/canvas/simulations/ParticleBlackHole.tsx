@@ -14,8 +14,10 @@ interface Props {
 
 const lensVertexShader = `
   varying vec3 vNormal;
+  varying vec3 vWorldPosition;
   void main() {
     vNormal = normalize(normalMatrix * normal);
+    vWorldPosition = (modelMatrix * vec4(position, 1.0)).xyz;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }
 `;
@@ -24,12 +26,17 @@ const lensFragmentShader = `
   uniform float uTime;
   uniform float uMass;
   varying vec3 vNormal;
+  varying vec3 vWorldPosition;
+  
   void main() {
-    vec3 viewDir = vec3(0.0, 0.0, 1.0);
-    float edge = 1.0 - abs(dot(vNormal, viewDir));
-    float rim = pow(edge, 2.5);
-    vec3 rimColor = vec3(1.0, 0.48 + sin(uTime * 0.6) * 0.08, 0.05);
-    float alpha = rim * uMass * 0.75;
+    vec3 viewDir = normalize(cameraPosition - vWorldPosition);
+    // Because normal is in view space (multiplied by normalMatrix), viewDir in view space is just (0,0,1).
+    // Wait, if normal is in view space, we should compare to vec3(0,0,1).
+    // Let's use view space normal correctly:
+    float edge = 1.0 - abs(dot(vNormal, vec3(0.0, 0.0, 1.0)));
+    float rim = pow(edge, 3.5);
+    vec3 rimColor = vec3(1.0, 0.48 + sin(uTime * 2.0) * 0.1, 0.05);
+    float alpha = rim * uMass * 0.9;
     gl_FragColor = vec4(rimColor, alpha);
   }
 `;
@@ -37,29 +44,60 @@ const lensFragmentShader = `
 const diskVertexShader = `
   uniform float uLensingStrength;
   uniform float uBhRadius;
+  uniform float uTime;
+  uniform float uIsTDE;
+  uniform float uMass;
+
   varying vec3 vWorldPosition;
   varying vec3 vColor;
   attribute vec3 color;
+  attribute float aSize;
 
   void main() {
     vColor = color;
-    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
     
-    // Gravitational Lensing Deflection
+    // Animate position (Keplerian rotation)
+    vec3 pos = position;
+    float r = length(pos.xz);
+    
+    // Keplerian velocity profile
+    float v = sqrt(uMass / max(r, 0.1)); 
+    float speed = v * 0.15; 
+    if (uIsTDE > 0.5) {
+      speed *= 0.4;
+    }
+    
+    float angle = uTime * speed;
+    float c = cos(angle);
+    float s = sin(angle);
+    
+    pos.x = position.x * c - position.z * s;
+    pos.z = position.x * s + position.z * c;
+    
+    // Turbulence / vertical oscillation
+    pos.y += sin(uTime * 4.0 + r * 6.0) * 0.08 * min(1.0, r / uBhRadius);
+
+    vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+    
+    // Gravitational Lensing (Ray-bending approximation for particles behind BH)
     vec4 bhViewPos = modelViewMatrix * vec4(0.0, 0.0, 0.0, 1.0);
     vec3 relPos = mvPosition.xyz - bhViewPos.xyz;
 
-    if (relPos.z < 0.0) {
+    if (relPos.z < 0.0) { 
       float d = length(relPos.xy);
+      float er = uBhRadius * 1.8 * uLensingStrength; // Einstein ring radius
       if (d > 0.05) {
-        float shift = (uLensingStrength * uBhRadius * 1.1) / (d + 0.12);
-        shift = min(shift, 4.0);
-        mvPosition.xy += normalize(relPos.xy) * shift * smoothstep(0.0, -12.0, relPos.z);
+        float shift = (er * er) / (d + 0.1);
+        shift = min(shift, uBhRadius * 3.5); 
+        mvPosition.xy += normalize(relPos.xy) * shift * smoothstep(0.0, -uBhRadius * 3.0, relPos.z);
       }
     }
 
-    vWorldPosition = (modelMatrix * vec4(position, 1.0)).xyz;
-    gl_PointSize = 0.09 * (300.0 / -mvPosition.z);
+    vWorldPosition = (modelMatrix * vec4(pos, 1.0)).xyz;
+    
+    // Dynamic point size
+    float flicker = 1.0 + 0.4 * sin(uTime * 12.0 + r * 20.0);
+    gl_PointSize = aSize * flicker * (300.0 / -mvPosition.z);
     gl_Position = projectionMatrix * mvPosition;
   }
 `;
@@ -71,23 +109,28 @@ const diskFragmentShader = `
 
   void main() {
     vec2 coord = gl_PointCoord - vec2(0.5);
-    if (length(coord) > 0.5) discard;
+    float distToCenter = length(coord);
+    if (distToCenter > 0.5) discard;
     
+    float alpha = smoothstep(0.5, 0.1, distToCenter);
+
     // Relativistic Doppler Beaming
     vec3 pos = vWorldPosition;
     vec3 vel = normalize(vec3(-pos.z, 0.0, pos.x));
-    vec3 obsDir = normalize(vec3(0.0, 0.35, 0.93));
+    vec3 obsDir = normalize(cameraPosition - vWorldPosition);
     float cosTheta = dot(vel, obsDir);
     
-    float beaming = pow(1.0 + 0.65 * cosTheta, 3.5);
-    float dist = length(pos.xz);
-    float temp = smoothstep(7.0, 1.8, dist);
-    vec3 color = mix(vColor, vec3(1.0, 0.94, 0.84), temp * 0.75);
+    // Stronger beaming
+    float beaming = pow(1.0 + 0.8 * cosTheta, 4.0);
     
-    color *= beaming;
+    // Temperature gradient
+    float r = length(pos.xz);
+    float temp = smoothstep(12.0, 1.5, r);
+    vec3 hotColor = mix(vColor, vec3(1.0, 0.95, 0.85), temp * 0.9);
     
-    float alpha = (1.0 - length(coord) * 2.0) * 0.9;
-    gl_FragColor = vec4(color, alpha);
+    vec3 color = hotColor * beaming * (1.0 + 0.3 * sin(uTime * 18.0 + r * 15.0));
+    
+    gl_FragColor = vec4(color, alpha * 0.9);
   }
 `;
 
@@ -119,17 +162,17 @@ const jetFragmentShader = `
   }
 
   void main() {
-    vec3 viewDir = vec3(0.0, 0.0, 1.0);
+    vec3 viewDir = vec3(0.0, 0.0, 1.0); // vNormal is in view space
     float edge = abs(dot(normalize(vNormal), viewDir));
-    float core = pow(edge, 2.5);
+    float core = pow(edge, 3.0);
 
-    float flow = noise(vec2(vUv.x * 10.0, vUv.y * 3.0 - uTime * 28.0));
-    float distFade = pow(vUv.y, 1.6);
+    float flow = noise(vec2(vUv.x * 15.0, vUv.y * 4.0 - uTime * 35.0));
+    float distFade = pow(vUv.y, 1.2);
 
-    float alpha = core * (0.22 + 0.78 * flow) * distFade * uIntensity;
-    vec3 color = mix(vec3(0.65, 0.75, 1.0), vec3(1.0), core * 0.45);
+    float alpha = core * (0.15 + 0.85 * flow) * distFade * uIntensity;
+    vec3 color = mix(vec3(0.65, 0.75, 1.0), vec3(1.0, 0.9, 0.8), core * 0.6);
 
-    gl_FragColor = vec4(color, alpha * 0.5);
+    gl_FragColor = vec4(color, alpha * 0.8);
   }
 `;
 
@@ -207,6 +250,11 @@ function AccretionDisk({
       }
     }
 
+    const sizes = new Float32Array(particleCount);
+    for (let i = 0; i < particleCount; i++) {
+        sizes[i] = 0.05 + Math.random() * 0.12;
+    }
+    geo.setAttribute("aSize", new THREE.BufferAttribute(sizes, 1));
     geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
     geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
     return geo;
@@ -216,7 +264,9 @@ function AccretionDisk({
     uTime: { value: 0 },
     uLensingStrength: { value: lensStrength },
     uBhRadius: { value: bhRadius },
-  }), [lensStrength, bhRadius]);
+    uIsTDE: { value: isTDE ? 1.0 : 0.0 },
+    uMass: { value: mass },
+  }), [lensStrength, bhRadius, isTDE, mass]);
 
   const timeRef = useRef(0);
 
@@ -226,10 +276,6 @@ function AccretionDisk({
     }
     const elapsed = timeRef.current;
 
-    if (diskRef.current && isPlaying) {
-      const speed = isTDE ? 0.08 : 0.13;
-      diskRef.current.rotation.y += delta * speed * (mass / 80) * timeScale;
-    }
     if (shaderRef.current) {
       shaderRef.current.uniforms.uTime.value = elapsed;
     }

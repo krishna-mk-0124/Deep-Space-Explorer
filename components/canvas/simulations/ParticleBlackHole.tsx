@@ -69,8 +69,8 @@ const diskVertexShader = `
       speed *= 0.4;
     }
     
-    // Reverse direction to match Cinematic shader
-    float angle = -uTime * speed;
+    // Standard Counter-Clockwise rotation (Matches Cinematic Shader)
+    float angle = uTime * speed;
     float c = cos(angle);
     float s = sin(angle);
     
@@ -89,19 +89,18 @@ const diskVertexShader = `
 
     if (relPos.z < 0.0) { 
       float d = length(relPos.xy);
-      float er = uBhRadius * 1.8 * uLensingStrength; // Einstein ring radius
       if (d > 0.05) {
-        float shift = (er * er) / (d + 0.1);
-        shift = min(shift, uBhRadius * 3.5); 
-        // Fix undefined smoothstep behavior when edge0 > edge1
-        mvPosition.xy += normalize(relPos.xy) * shift * smoothstep(0.0, uBhRadius * 3.0, -relPos.z);
+        // Toned down Einstein ring shift to prevent massive distortion
+        float shift = (uLensingStrength * uBhRadius * 1.3) / (d + 0.15);
+        shift = min(shift, uBhRadius * 1.5); 
+        mvPosition.xy += normalize(relPos.xy) * shift * smoothstep(0.0, uBhRadius * 2.0, -relPos.z);
       }
     }
 
     vWorldPosition = (modelMatrix * vec4(pos, 1.0)).xyz;
     
     // Doppler beaming calculation
-    vec3 localVel = normalize(vec3(pos.z, 0.0, -pos.x));
+    vec3 localVel = normalize(vec3(-pos.z, 0.0, pos.x));
     vec3 worldVel = normalize((modelMatrix * vec4(localVel, 0.0)).xyz);
     vec3 obsDir = normalize(cameraPosition - vWorldPosition);
     vCosTheta = dot(worldVel, obsDir);
@@ -127,8 +126,8 @@ const diskFragmentShader = `
     
     float alpha = smoothstep(0.5, 0.1, distToCenter);
 
-    // Stronger beaming using precalculated vCosTheta from vertex shader
-    float beaming = pow(1.0 + 0.8 * vCosTheta, 4.0);
+    // Relativistic Doppler Beaming (Balanced formula)
+    float beaming = pow((1.0 + 0.55 * vCosTheta) / (1.0 - 0.55 * vCosTheta), 1.2);
     
     // Temperature gradient
     float r = length(vLocalPosition.xz);
@@ -443,11 +442,11 @@ export default function ParticleBlackHole({ params, object }: Props) {
 
       {/* Inner corona glow */}
       <mesh>
-        <sphereGeometry args={[bhRadius * 1.9, 24, 24]} />
+        <sphereGeometry args={[bhRadius * 1.3, 32, 32]} />
         <meshBasicMaterial
           color={accretionDiskColor}
           transparent
-          opacity={0.05}
+          opacity={0.015}
           side={THREE.BackSide}
           blending={THREE.AdditiveBlending}
           depthWrite={false}

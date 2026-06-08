@@ -88,12 +88,19 @@ const diskVertexShader = `
     vec3 relPos = mvPosition.xyz - bhViewPos.xyz;
 
     if (relPos.z < 0.0) { 
-      float d = length(relPos.xy);
+      // Faux-raytracing for Gargantua effect: split the back of the disk into top and bottom arches
+      float flip = fract(aSize * 742.13) > 0.5 ? 1.0 : -1.0;
+      
+      // Bias the screen-space direction vertically based on depth to form the halo arches
+      vec2 screenDir = vec2(relPos.x, (-relPos.z * 1.5 + abs(relPos.y)) * flip);
+      float d = length(screenDir);
+      
       if (d > 0.05) {
-        // Toned down Einstein ring shift to prevent massive distortion
-        float shift = (uLensingStrength * uBhRadius * 1.3) / (d + 0.15);
-        shift = min(shift, uBhRadius * 1.5); 
-        mvPosition.xy += normalize(relPos.xy) * shift * smoothstep(0.0, uBhRadius * 2.0, -relPos.z);
+        screenDir = normalize(screenDir);
+        float er = uBhRadius * 1.5 * uLensingStrength; // Einstein ring radius
+        float shift = (er * er) / (d + 0.2);
+        shift = min(shift, uBhRadius * 2.5); 
+        mvPosition.xy += screenDir * shift * smoothstep(0.0, uBhRadius * 1.5, -relPos.z);
       }
     }
 

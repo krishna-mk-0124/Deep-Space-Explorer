@@ -235,20 +235,31 @@ export default function GalaxyCollision({ params, object }: Props) {
 
       // --- STARBURST NODES (H II Regions) ---
       for (let i = 0; i < burstCount; i++) {
-        // Starbursts happen at the collision interface (near 0,0,0)
-        const x = (Math.random() - 0.5) * 8;
-        const y = (Math.random() - 0.5) * 2;
-        const z = (Math.random() - 0.5) * 8;
+        // Organic clustering at the collision interfaces
+        const u = Math.random();
+        const v = Math.random();
+        // Heavy clustering near the core interface, trailing off
+        const r = Math.pow(Math.random(), 2.5) * 5; 
+        const theta = u * Math.PI * 2;
+        const phi = Math.acos(2.0 * v - 1.0);
         
-        burstPos[i * 3] = x + (Math.random() > 0.5 ? 5 : -5); // Start slightly apart
+        const x = r * Math.sin(phi) * Math.cos(theta);
+        const y = r * Math.sin(phi) * Math.sin(theta) * 0.3; // Squash to a disk
+        const z = r * Math.cos(phi);
+        
+        // Spawn them slightly offset along the collision axis
+        const offset = Math.random() > 0.5 ? 2.0 : -2.0;
+        
+        burstPos[i * 3] = x + offset;
         burstPos[i * 3 + 1] = y;
         burstPos[i * 3 + 2] = z;
 
-        burstTarget[i * 3] = x * 0.5; // Compress into the center
+        burstTarget[i * 3] = x * 0.3; // Compress violently into the center
         burstTarget[i * 3 + 1] = y * 0.5;
-        burstTarget[i * 3 + 2] = z * 0.5;
+        burstTarget[i * 3 + 2] = z * 0.3;
 
-        burstSize[i] = Math.random() * 1.5 + 0.5;
+        // Much smaller, realistic particle sizes
+        burstSize[i] = Math.random() * 0.2 + 0.05;
         
         // Brilliant pink and bright blue star formation nodes
         const isPink = Math.random() > 0.3;

@@ -29,6 +29,11 @@ const cinematicFragmentShader = `
     p3 += dot(p3, p3.yzx + 33.33);
     return fract((p3.x + p3.y) * p3.z);
   }
+  
+  // High frequency noise for billions of stars
+  float starNoise(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+  }
 
   float noise(vec2 p) {
     vec2 i = floor(p);
@@ -67,18 +72,17 @@ const cinematicFragmentShader = `
     
     // The spiral structure
     float arms = sin(a * 2.0 + r * swirl);
-    // Map from [-1, 1] to [0.3, 1.0] so gaps are never completely empty!
-    float armStrength = arms * 0.35 + 0.65;
+    // Sharpen the arms
+    float armStrength = pow(arms * 0.5 + 0.5, 2.0);
     
     // Core is incredibly dense and bright
-    float core = exp(-r * r * 30.0 / size);
+    float core = exp(-r * r * 80.0 / size);
     
-    // The base disk exists everywhere, the arms just add extra density
-    float baseDisk = exp(-r * 3.5 / size);
-    float disk = baseDisk * armStrength;
+    // The base disk exists everywhere
+    float baseDisk = exp(-r * 4.5 / size);
+    float disk = baseDisk * (0.15 + armStrength * 0.85);
     
-    // Smooth out the transition so it looks like a fluid galaxy, not tentacles
-    return core * 2.5 + disk * 1.8;
+    return core * 2.5 + disk * 1.5;
   }
 
   void main() {
@@ -92,23 +96,27 @@ const cinematicFragmentShader = `
     vec2 c2 = -c1;
     
     vec2 q, r;
-    float warpIntensity = 0.2 + uEventProgress * 1.5; 
+    // DRASTICALLY REDUCED WARP so they don't look like smoke!
+    float warpIntensity = 0.03 + uEventProgress * 0.15; 
     float n = pattern(p * 4.0, q, r);
     
     vec2 warpedP = p + (r - 0.5) * warpIntensity;
     
-    float swirl1 = -8.0 - uEventProgress * 10.0;
-    float swirl2 = -8.0 - uEventProgress * 10.0;
+    float swirl1 = -8.0 - uEventProgress * 5.0;
+    float swirl2 = -8.0 - uEventProgress * 5.0;
     
     float g1 = spiral(warpedP, c1, swirl1, 1.0);
     float g2 = spiral(warpedP, c2, swirl2, 1.0);
     
     float density = g1 + g2;
-    density *= (n * 1.8);
     
-    vec3 col1 = vec3(0.05, 0.4, 0.9); 
-    vec3 col2 = vec3(0.9, 0.3, 0.05); 
-    vec3 coreCol = vec3(1.0, 0.95, 0.8);
+    // Dust lanes
+    float dustVal = smoothstep(0.4, 0.6, n);
+    density *= (0.7 + dustVal * 0.3);
+    
+    vec3 col1 = vec3(0.1, 0.5, 1.0); 
+    vec3 col2 = vec3(1.0, 0.4, 0.1); 
+    vec3 coreCol = vec3(1.0, 0.95, 0.9);
     vec3 dustCol = vec3(0.01, 0.005, 0.005);
     
     float d1 = length(warpedP - c1);
@@ -117,12 +125,18 @@ const cinematicFragmentShader = `
     vec3 baseCol = mix(col1, col2, mixRatio);
     
     vec3 finalColor = mix(dustCol, baseCol, smoothstep(0.0, 0.3, density));
-    finalColor = mix(finalColor, coreCol, smoothstep(0.6, 1.5, density));
+    finalColor = mix(finalColor, coreCol, smoothstep(0.7, 1.5, density));
     
+    // H-Alpha regions
     float hAlphaNoise = fbm(p * 15.0 + uTime * 0.1);
-    float spark = smoothstep(0.6, 1.0, hAlphaNoise) * smoothstep(0.2, 0.8, density);
+    float spark = smoothstep(0.6, 1.0, hAlphaNoise) * smoothstep(0.2, 0.6, density);
     vec3 hAlphaCol = vec3(1.0, 0.1, 0.5);
-    finalColor += hAlphaCol * spark * 2.0;
+    finalColor += hAlphaCol * spark * 1.5;
+    
+    // Starlight Granularity (makes it look like billions of stars instead of smoke)
+    float stars = starNoise(p * 800.0);
+    float starGlimmer = mix(0.6, 1.2, stars);
+    finalColor *= starGlimmer;
     
     float mask = smoothstep(1.0, 0.4, length(p));
     

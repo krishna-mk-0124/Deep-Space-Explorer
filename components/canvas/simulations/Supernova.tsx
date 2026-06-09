@@ -151,10 +151,7 @@ function SphericalSupernova({ eventProgress }: { eventProgress: number }) {
     uEventProgress: { value: 0 }
   }), []);
 
-  const uniforms = useMemo(() => ({
-    uTime: { value: 0 },
-    uEventProgress: { value: 0 }
-  }), []);
+  // Uniforms already defined above
 
   const timeRef = useRef(0);
   const materialRef = useRef<THREE.ShaderMaterial>(null);

@@ -175,9 +175,9 @@ function SphericalSupernova({ eventProgress }: { eventProgress: number }) {
         coreRef.current.scale.set(scale, scale, scale);
       } else {
         // Core collapse leaves a tiny neutron star remnant
-        // Increased base scale drastically to 0.4 so it is easily visible even when zoomed out
+        // Set base scale to 0.1
         const pulse = 1.0 + Math.sin(timeRef.current * 30.0) * 0.15;
-        const remScale = Math.max(0.4 * pulse, 0.5 - (eventProgress * 1.5));
+        const remScale = Math.max(0.1 * pulse, 0.5 - (eventProgress * 1.5));
         coreRef.current.scale.set(remScale, remScale, remScale);
       }
     }

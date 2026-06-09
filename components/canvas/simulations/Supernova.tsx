@@ -63,12 +63,11 @@ const shockwaveFragmentShader = `
   }
 `;
 
-export default function Supernova({ params, object }: Props) {
+function SphericalSupernova({ eventProgress }: { eventProgress: number }) {
   const coreRef = useRef<THREE.Mesh>(null);
   const shockwaveRef = useRef<THREE.Mesh>(null);
   
   const { timeScale, isPlaying } = useExplorer();
-  const eventProgress = Number(params.eventProgress) || 0.0;
   
   const uniforms = useMemo(() => ({
     uTime: { value: 0 },
@@ -137,6 +136,108 @@ export default function Supernova({ params, object }: Props) {
           side={THREE.DoubleSide}
         />
       </mesh>
+    </group>
+  );
+}
+
+function BipolarPlanetaryNebula({ params, eventProgress }: { params: Record<string, number | string>, eventProgress: number }) {
+  const pointsRef = useRef<THREE.Points>(null);
+  const { timeScale, isPlaying } = useExplorer();
+  
+  const particleCount = Number(params.particleCount) || 20000;
+  const maxRadius = Number(params.maxRadius) || 15;
+  const ejectaColor = (params.ejectaColor as string) || "#eeaa22";
+  const coreColor = (params.coreColor as string) || "#ffffff";
+  
+  const { positions, colors, sizes } = useMemo(() => {
+    // Increase visual density
+    const actualCount = particleCount * 2;
+    const pos = new Float32Array(actualCount * 3);
+    const col = new Float32Array(actualCount * 3);
+    const siz = new Float32Array(actualCount);
+    
+    const colorObj = new THREE.Color(ejectaColor);
+    const whiteColor = new THREE.Color(coreColor);
+    
+    for (let i = 0; i < actualCount; i++) {
+      // Butterfly shape: dense at the center waist, flaring out into two wide cones.
+      const u = Math.random();
+      const theta = 2.0 * Math.PI * u; 
+      
+      let zDist = (Math.random() - 0.5) * 2.0; 
+      // Emphasize the outer lobes
+      zDist = Math.sign(zDist) * Math.pow(Math.abs(zDist), 0.6); 
+      
+      const radius = maxRadius * Math.pow(Math.random(), 0.5); // Spread out more evenly
+      
+      // The waist is pinched: radius in xy plane should be small when zDist is small
+      const pinch = 0.05 + Math.pow(Math.abs(zDist), 1.8) * 1.5;
+      
+      const x = radius * pinch * Math.cos(theta);
+      const y = radius * pinch * Math.sin(theta);
+      const z = radius * zDist * 1.2; // elongate along Z
+      
+      // Add turbulent noise to the wings
+      const turbulence = 1.0 + (Math.random() - 0.5) * 0.3;
+      
+      pos[i*3] = x * turbulence;
+      pos[i*3+1] = y * turbulence;
+      pos[i*3+2] = z * turbulence;
+      
+      // Color interpolation: hot inner core, cooler/dustier outer wings
+      const distRatio = Math.sqrt(x*x + y*y + z*z) / (maxRadius * 1.5);
+      const mixedColor = new THREE.Color().lerpColors(whiteColor, colorObj, Math.min(1.0, distRatio * 1.5));
+      col[i*3] = mixedColor.r;
+      col[i*3+1] = mixedColor.g;
+      col[i*3+2] = mixedColor.b;
+      
+      // Point size variation
+      siz[i] = Math.random() * 0.25 + 0.05;
+    }
+    return { positions: pos, colors: col, sizes: siz };
+  }, [particleCount, maxRadius, ejectaColor, coreColor]);
+
+  useFrame((state, delta) => {
+    if (pointsRef.current && isPlaying) {
+      pointsRef.current.rotation.z += delta * timeScale * 0.05;
+      pointsRef.current.rotation.x = Math.PI / 4; // tilt it so we can see the butterfly shape clearly
+    }
+    if (pointsRef.current) {
+      // The eventProgress scales the entire nebula
+      const expansion = Math.max(0.01, eventProgress * 2.5); // 0 to 2.5 scale
+      pointsRef.current.scale.set(expansion, expansion, expansion);
+    }
+  });
+
+  return (
+    <group>
+      <mesh>
+        <sphereGeometry args={[0.05, 16, 16]} />
+        <meshBasicMaterial color={coreColor} />
+      </mesh>
+      <points ref={pointsRef}>
+        <bufferGeometry>
+          <bufferAttribute attach="attributes-position" count={positions.length / 3} array={positions} itemSize={3} />
+          <bufferAttribute attach="attributes-color" count={colors.length / 3} array={colors} itemSize={3} />
+          <bufferAttribute attach="attributes-size" count={sizes.length} array={sizes} itemSize={1} />
+        </bufferGeometry>
+        <pointsMaterial vertexColors transparent opacity={0.6} blending={THREE.AdditiveBlending} depthWrite={false} sizeAttenuation />
+      </points>
+    </group>
+  );
+}
+
+export default function Supernova({ params, object }: Props) {
+  const eventProgress = Number(params.eventProgress) || 0.0;
+  const isBipolar = params.remnantType === "white_dwarf";
+
+  return (
+    <group>
+      {isBipolar ? (
+        <BipolarPlanetaryNebula params={params} eventProgress={eventProgress} />
+      ) : (
+        <SphericalSupernova eventProgress={eventProgress} />
+      )}
     </group>
   );
 }

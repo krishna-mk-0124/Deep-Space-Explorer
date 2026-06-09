@@ -282,12 +282,27 @@ export default function GalaxyCollision({ params, object }: Props) {
 
   const timeRef = useRef(0);
 
+  const starMatRef = useRef<THREE.ShaderMaterial>(null);
+  const dustMatRef = useRef<THREE.ShaderMaterial>(null);
+  const burstMatRef = useRef<THREE.ShaderMaterial>(null);
+
   useFrame((state, delta) => {
     if (isPlaying) {
       timeRef.current += delta * timeScale;
     }
-    uniforms.uTime.value = timeRef.current;
-    uniforms.uEventProgress.value = progressRef.current;
+    
+    if (starMatRef.current) {
+      starMatRef.current.uniforms.uTime.value = timeRef.current;
+      starMatRef.current.uniforms.uEventProgress.value = eventProgress;
+    }
+    if (dustMatRef.current) {
+      dustMatRef.current.uniforms.uTime.value = timeRef.current;
+      dustMatRef.current.uniforms.uEventProgress.value = eventProgress;
+    }
+    if (burstMatRef.current) {
+      burstMatRef.current.uniforms.uTime.value = timeRef.current;
+      burstMatRef.current.uniforms.uEventProgress.value = eventProgress;
+    }
   });
 
   return (
@@ -305,6 +320,7 @@ export default function GalaxyCollision({ params, object }: Props) {
           <bufferAttribute attach="attributes-color" count={stars.colors.length / 3} array={stars.colors} itemSize={3} />
         </bufferGeometry>
         <shaderMaterial
+          ref={starMatRef}
           vertexShader={vertexShader}
           fragmentShader={fragmentShader}
           uniforms={uniforms}
@@ -324,6 +340,7 @@ export default function GalaxyCollision({ params, object }: Props) {
             <bufferAttribute attach="attributes-color" count={dust.colors.length / 3} array={dust.colors} itemSize={3} />
           </bufferGeometry>
           <shaderMaterial
+            ref={dustMatRef}
             vertexShader={vertexShader}
             fragmentShader={dustFragmentShader}
             uniforms={uniforms}
@@ -344,6 +361,7 @@ export default function GalaxyCollision({ params, object }: Props) {
             <bufferAttribute attach="attributes-color" count={starbursts.colors.length / 3} array={starbursts.colors} itemSize={3} />
           </bufferGeometry>
           <shaderMaterial
+            ref={burstMatRef}
             vertexShader={vertexShader}
             fragmentShader={starburstFragmentShader}
             uniforms={uniforms}

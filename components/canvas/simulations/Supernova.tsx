@@ -151,13 +151,22 @@ function SphericalSupernova({ eventProgress }: { eventProgress: number }) {
     uEventProgress: { value: 0 }
   }), []);
 
+  const uniforms = useMemo(() => ({
+    uTime: { value: 0 },
+    uEventProgress: { value: 0 }
+  }), []);
+
   const timeRef = useRef(0);
+  const materialRef = useRef<THREE.ShaderMaterial>(null);
 
   useFrame((state, delta) => {
     if (isPlaying) {
       timeRef.current += delta * timeScale;
     }
-    uniforms.uEventProgress.value = eventProgress;
+    
+    if (materialRef.current) {
+      materialRef.current.uniforms.uEventProgress.value = eventProgress;
+    }
     
     if (coreRef.current) {
       if (isPlaying) {
@@ -218,6 +227,7 @@ function SphericalSupernova({ eventProgress }: { eventProgress: number }) {
             <bufferAttribute attach="attributes-velocity" args={[velocities, 3]} />
           </bufferGeometry>
           <shaderMaterial 
+            ref={materialRef}
             vertexShader={supernovaVertexShader}
             fragmentShader={supernovaFragmentShader}
             uniforms={uniforms}

@@ -175,7 +175,9 @@ function SphericalSupernova({ eventProgress }: { eventProgress: number }) {
         coreRef.current.scale.set(scale, scale, scale);
       } else {
         // Core collapse leaves a tiny neutron star remnant
-        const remScale = Math.max(0.01, 0.5 - (eventProgress * 1.5));
+        // Make it scale down but stop at a visible size (0.08) rather than vanishing
+        const pulse = 1.0 + Math.sin(timeRef.current * 30.0) * 0.15;
+        const remScale = Math.max(0.08 * pulse, 0.5 - (eventProgress * 1.5));
         coreRef.current.scale.set(remScale, remScale, remScale);
       }
     }
@@ -188,7 +190,7 @@ function SphericalSupernova({ eventProgress }: { eventProgress: number }) {
     <group>
       <mesh ref={coreRef}>
         <sphereGeometry args={[1, 64, 64]} />
-        <meshBasicMaterial color={eventProgress < 0.1 ? "#ff3300" : "#ffffff"} />
+        <meshBasicMaterial color={eventProgress < 0.1 ? "#ff3300" : "#88ccff"} />
       </mesh>
       
       {/* Neutrino / Shock Breakout Flash */}

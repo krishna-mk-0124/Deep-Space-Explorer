@@ -65,12 +65,20 @@ const cinematicFragmentShader = `
     float r = length(v);
     float a = atan(v.y, v.x);
     
+    // The spiral structure
     float arms = sin(a * 2.0 + r * swirl);
+    // Map from [-1, 1] to [0.3, 1.0] so gaps are never completely empty!
+    float armStrength = arms * 0.35 + 0.65;
     
-    float core = exp(-r * r * 40.0 / size);
-    float disk = exp(-r * 3.0 / size) * max(0.0, arms);
+    // Core is incredibly dense and bright
+    float core = exp(-r * r * 30.0 / size);
     
-    return core * 2.0 + disk * 1.5;
+    // The base disk exists everywhere, the arms just add extra density
+    float baseDisk = exp(-r * 3.5 / size);
+    float disk = baseDisk * armStrength;
+    
+    // Smooth out the transition so it looks like a fluid galaxy, not tentacles
+    return core * 2.5 + disk * 1.8;
   }
 
   void main() {

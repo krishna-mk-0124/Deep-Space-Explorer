@@ -175,9 +175,9 @@ function SphericalSupernova({ eventProgress }: { eventProgress: number }) {
         coreRef.current.scale.set(scale, scale, scale);
       } else {
         // Core collapse leaves a tiny neutron star remnant
-        // Make it scale down but stop at a visible size (0.08) rather than vanishing
+        // Increased base scale drastically to 0.4 so it is easily visible even when zoomed out
         const pulse = 1.0 + Math.sin(timeRef.current * 30.0) * 0.15;
-        const remScale = Math.max(0.08 * pulse, 0.5 - (eventProgress * 1.5));
+        const remScale = Math.max(0.4 * pulse, 0.5 - (eventProgress * 1.5));
         coreRef.current.scale.set(remScale, remScale, remScale);
       }
     }
@@ -193,9 +193,14 @@ function SphericalSupernova({ eventProgress }: { eventProgress: number }) {
         <meshBasicMaterial color={eventProgress < 0.1 ? "#ff3300" : "#88ccff"} />
       </mesh>
       
+      {/* Permanent Neutron Star Glow */}
+      {eventProgress >= 0.1 && (
+        <pointLight intensity={50} distance={100} color="#88ccff" />
+      )}
+      
       {/* Neutrino / Shock Breakout Flash */}
       {eventProgress > 0.09 && eventProgress < 0.18 && (
-        <pointLight intensity={150 * (1.0 - (eventProgress - 0.09)*11)} distance={200} color="#88ccff" />
+        <pointLight intensity={250 * (1.0 - (eventProgress - 0.09)*11)} distance={300} color="#88ccff" />
       )}
       
       {/* Pre-supernova Circumstellar Material (Light Echoes) */}

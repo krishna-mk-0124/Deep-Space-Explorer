@@ -89,37 +89,28 @@ const diskVertexShader = `
     vec3 relPos = mvPosition.xyz - bhViewPos.xyz;
 
     if (relPos.z < 0.0) { 
-      // Depth behind the black hole
+      // Authentic spatial warp (Gravitational Lensing)
+      // Space is stretched radially from the black hole center.
+      // We add a tiny vertical epsilon based on the particle's physical Y position 
+      // to guarantee particles at the exact equator separate smoothly into top and bottom arches.
+      vec2 screenPos = relPos.xy + vec2(0.0, 0.001 * (pos.y >= 0.0 ? 1.0 : -1.0));
+      float d = length(screenPos);
+      
+      // Einstein ring radius
+      float er = uBhRadius * 1.3 * uLensingStrength;
+      
+      // Hyperbolic spatial warp: r_lensed = sqrt(r_unlensed^2 + er^2)
+      // This provides a physically smooth, continuous deflection that approaches the Einstein ring
+      float shift = sqrt(d * d + er * er) - d;
+      
+      // Smoothly apply the warp as the particle traverses deeper behind the black hole
       float depth = -relPos.z;
-      vec2 screenPos = relPos.xy;
+      float lensPower = smoothstep(0.0, uBhRadius * 2.5, depth);
       
-      // Split disk into top and bottom halos
-      float flip = pos.y >= 0.0 ? 1.0 : -1.0;
+      mvPosition.xy += normalize(screenPos) * shift * lensPower;
       
-      // Base Einstein ring radius
-      float er = uBhRadius * 1.5 * uLensingStrength;
-      
-      // Preserve the thick structure of the accretion disk in the lensed arch
-      float rDist = max(0.0, (r / uBhRadius) - 1.0);
-      float archRadius = er + rDist * 0.35 * uBhRadius;
-      
-      // Map x-coordinate to the circular arch equation: y^2 = R^2 - x^2
-      float targetX = clamp(relPos.x, -archRadius, archRadius);
-      float targetY = sqrt(max(0.0, archRadius * archRadius - targetX * targetX)) * flip;
-      vec2 targetPos = vec2(targetX, targetY);
-      
-      // Maximum lensing occurs when the particle is fully behind the black hole
-      float lensPower = smoothstep(0.0, uBhRadius * 2.0, depth);
-      // Fade out lensing for particles that are far to the sides (not obscured by the BH silhouette)
-      float lateralFalloff = smoothstep(uBhRadius * 2.5, uBhRadius * 0.5, abs(relPos.x));
-      
-      vec2 finalPos = mix(screenPos, targetPos, lensPower * lateralFalloff);
-      
-      mvPosition.xy = bhViewPos.xy + finalPos;
-      
-      // PULL FORWARD: Bring lensed particles to the front of the depth buffer 
-      // so the solid event horizon sphere doesn't clip the gorgeous halo arches!
-      mvPosition.z += (depth + uBhRadius * 2.0) * lensPower * lateralFalloff;
+      // PULL FORWARD: Ensure lensed particles render in front of the black hole's depth buffer
+      mvPosition.z += (depth + uBhRadius * 2.0) * lensPower;
     }
 
     vWorldPosition = (modelMatrix * vec4(pos, 1.0)).xyz;

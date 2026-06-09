@@ -133,7 +133,7 @@ export default function ObjectSidebar() {
     setCollapsed((c) => ({ ...c, [type]: !c[type] }));
   };
 
-  return (
+  return useMemo(() => (
     <motion.aside
       initial={{ x: -300, opacity: 0 }}
       animate={{ x: 0, opacity: 1 }}
@@ -234,5 +234,5 @@ export default function ObjectSidebar() {
         </div>
       </div>
     </motion.aside>
-  );
+  ), [filtered, grouped, collapsed, selectedObject?.id, search, objects.length]);
 }

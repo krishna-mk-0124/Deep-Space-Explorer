@@ -69,6 +69,8 @@ export default function NBodyCluster({ params, object }: Props) {
       "r136":              "/assets/clusters/r136.png",
       "westerlund-1":      "/assets/clusters/westerlund-1.png",
       "ngc-1300":          "/assets/clusters/ngc-1300.png",
+      "c-92":              "/assets/clusters/butterfly-cluster.png",
+      "c-104":             "/assets/clusters/47-tucanae.png",
     };
     return textureMap[object.id] ?? "/assets/clusters/generic_cluster.png";
   }, [object.id]);

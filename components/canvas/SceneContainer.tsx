@@ -112,9 +112,6 @@ function CameraRig() {
       const panProgress = Math.min(progress / 0.4, 1.0);
       const panEase = 1 - Math.pow(1 - panProgress, 4); // easeOutQuart
 
-      const currentLookAt = new THREE.Vector3().lerpVectors(panStartTarget.current, new THREE.Vector3(0, 0, 0), panEase);
-      state.camera.lookAt(currentLookAt);
-
       // Phase 2: Stellarium Telescope Zoom (0 to 1.0)
       // Uses easeInOutExpo: starts slow, accelerates massively, and decelerates smoothly at the end
       const zoomEase = progress === 0 
@@ -132,6 +129,9 @@ function CameraRig() {
       }
       const endPos = new THREE.Vector3(0, endY, endZ);
       state.camera.position.lerpVectors(startPos.current, endPos, zoomEase);
+
+      const currentLookAt = new THREE.Vector3().lerpVectors(panStartTarget.current, new THREE.Vector3(0, 0, 0), panEase);
+      state.camera.lookAt(currentLookAt);
       
       // Calculate speed and remaining distance
       const distLy = selectedObject ? getDistanceLy(selectedObject.encyclopedia.classificationData) : 0;

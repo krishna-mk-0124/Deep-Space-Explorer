@@ -143,17 +143,17 @@ function SphericalSupernova({ eventProgress }: { eventProgress: number }) {
 function createSoftParticleTexture() {
   if (typeof document === "undefined") return null;
   const canvas = document.createElement("canvas");
-  canvas.width = 64;
-  canvas.height = 64;
+  canvas.width = 128;
+  canvas.height = 128;
   const ctx = canvas.getContext("2d");
   if (ctx) {
-    const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
-    gradient.addColorStop(0, "rgba(255, 255, 255, 1.0)");
-    gradient.addColorStop(0.2, "rgba(255, 255, 255, 0.8)");
-    gradient.addColorStop(0.5, "rgba(255, 255, 255, 0.2)");
+    const gradient = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+    gradient.addColorStop(0, "rgba(255, 255, 255, 0.8)");
+    gradient.addColorStop(0.15, "rgba(255, 255, 255, 0.4)");
+    gradient.addColorStop(0.4, "rgba(255, 255, 255, 0.1)");
     gradient.addColorStop(1, "rgba(255, 255, 255, 0.0)");
     ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, 64, 64);
+    ctx.fillRect(0, 0, 128, 128);
   }
   return new THREE.CanvasTexture(canvas);
 }
@@ -164,93 +164,123 @@ function BipolarPlanetaryNebula({ params, eventProgress }: { params: Record<stri
   
   const particleTexture = useMemo(() => createSoftParticleTexture(), []);
   
-  const particleCount = Number(params.particleCount) || 20000;
   const maxRadius = Number(params.maxRadius) || 15;
-  const ejectaColor = (params.ejectaColor as string) || "#eeaa22";
-  const coreColor = (params.coreColor as string) || "#ffffff";
   
   const { positions, colors, sizes } = useMemo(() => {
-    // Dramatically increase density for volumetric look
-    const actualCount = particleCount * 3;
-    const pos = new Float32Array(actualCount * 3);
-    const col = new Float32Array(actualCount * 3);
-    const siz = new Float32Array(actualCount);
+    // 150,000 particles for majestic dense volumetric clouds
+    const count = 150000;
+    const pos = new Float32Array(count * 3);
+    const col = new Float32Array(count * 3);
+    const siz = new Float32Array(count);
     
-    for (let i = 0; i < actualCount; i++) {
-      const u = Math.random();
-      const theta = 2.0 * Math.PI * u; 
+    // NASA Bug Nebula signature colors
+    const cWhite = new THREE.Color("#ffffff");
+    const cBlue = new THREE.Color("#bbeeff");
+    const cPink = new THREE.Color("#ff88cc");
+    const cPurple = new THREE.Color("#aa66ff");
+    const cOrange = new THREE.Color("#ff7722");
+    const cRed = new THREE.Color("#cc1100");
+    const cGreen = new THREE.Color("#66cc88");
+    const cYellow = new THREE.Color("#ffcc44");
+    
+    const setParticle = (i: number, x: number, y: number, z: number, c: THREE.Color, s: number) => {
+      pos[i*3] = x; pos[i*3+1] = y; pos[i*3+2] = z;
+      col[i*3] = c.r; col[i*3+1] = c.g; col[i*3+2] = c.b;
+      siz[i] = s;
+    };
+
+    for (let i = 0; i < count; i++) {
+      const typeRand = Math.random();
+      const theta = Math.random() * Math.PI * 2;
       
-      let zDist = (Math.random() - 0.5) * 2.0; 
-      // Push particles towards the outer lobes to create the dual-cone look
-      zDist = Math.sign(zDist) * Math.pow(Math.abs(zDist), 0.5); 
+      let x, y, z;
+      let finalColor = new THREE.Color();
+      let pSize = 0;
       
-      // Base radius equation for an hourglass/butterfly shape
-      const baseR = 0.05 + Math.pow(Math.abs(zDist), 2.5) * 3.0; 
+      const turbulence = () => (Math.random() - 0.5) * 0.25;
       
-      // Most particles form the dense "walls" of the cavity, fewer fill the interior
-      const isWall = Math.random() > 0.25;
-      const wallThickness = 0.2;
-      const rScale = isWall ? (1.0 - Math.random() * wallThickness) : Math.pow(Math.random(), 0.5); 
-      
-      const radius = maxRadius * baseR * rScale;
-      
-      // Add azimuthal structure (folds and filaments) to the wings
-      const fold = Math.sin(theta * 3.0) * 0.35 + Math.cos(theta * 7.0) * 0.15;
-      
-      const x = radius * (1.0 + fold) * Math.cos(theta);
-      // Squash Y to flatten the butterfly rather than a perfect cylinder
-      const y = radius * (1.0 + fold) * Math.sin(theta) * 0.5; 
-      const z = zDist * maxRadius * 2.0; 
-      
-      // Fine turbulent noise for chaotic gas clouds
-      const turbulence = 1.0 + (Math.random() - 0.5) * 0.25;
-      
-      pos[i*3] = x * turbulence;
-      pos[i*3+1] = y * turbulence;
-      pos[i*3+2] = z * turbulence;
-      
-      // Realistic Color Mapping: Intense hot core -> standard ejecta -> dark cooling edges
-      const distFromCenter = Math.sqrt(x*x + y*y + z*z);
-      const normalizedDist = Math.min(1.0, distFromCenter / (maxRadius * 2.5));
-      
-      let finalC;
-      if (normalizedDist < 0.15) {
-        finalC = new THREE.Color(coreColor).lerp(new THREE.Color(ejectaColor), normalizedDist / 0.15);
+      if (typeRand < 0.15) {
+        // 1) EQUATORIAL DUST TORUS (15%)
+        // Dense, highly pinched waist with green/yellow/white colors
+        const rad = (Math.random() * 0.25 + 0.05) * maxRadius;
+        const height = (Math.random() - 0.5) * maxRadius * 0.15;
+        
+        x = rad * Math.cos(theta) * (1 + turbulence());
+        y = rad * Math.sin(theta) * 0.5 * (1 + turbulence()); // squash Y heavily
+        z = height;
+        
+        const rRatio = rad / (0.3 * maxRadius);
+        if (rRatio < 0.3) finalColor.copy(cWhite).lerp(cYellow, rRatio / 0.3);
+        else finalColor.copy(cYellow).lerp(cGreen, (rRatio - 0.3) / 0.7);
+        
+        pSize = Math.random() * 1.0 + 0.5;
+        
+      } else if (typeRand < 0.65) {
+        // 2) INNER BRIGHT LOBES (50%)
+        // The iconic pink/purple glowing "V" shape wings
+        const zDir = Math.random() > 0.5 ? 1 : -1;
+        const zRatio = Math.pow(Math.random(), 1.2); 
+        const zVal = (zRatio * 1.5 + 0.05) * maxRadius;
+        z = zVal * zDir;
+        
+        const baseR = (zVal / maxRadius) * maxRadius * 0.75;
+        
+        // Folds for volumetric sheets of gas
+        const folds = Math.sin(theta * 4) * 0.4 + Math.cos(theta * 7) * 0.2;
+        const thickness = Math.random() * 0.4 + 0.6;
+        const rad = baseR * (1 + folds) * thickness;
+        
+        x = rad * Math.cos(theta) * (1 + turbulence());
+        y = rad * Math.sin(theta) * 0.6 * (1 + turbulence());
+        
+        if (zRatio < 0.2) finalColor.copy(cWhite).lerp(cPink, zRatio / 0.2);
+        else if (zRatio < 0.6) finalColor.copy(cPink).lerp(cPurple, (zRatio - 0.2) / 0.4);
+        else finalColor.copy(cPurple).lerp(cRed, (zRatio - 0.6) / 0.4);
+        
+        pSize = Math.random() * 2.0 + 1.2;
+        
       } else {
-        finalC = new THREE.Color(ejectaColor).lerp(new THREE.Color("#1a0000"), (normalizedDist - 0.15) / 0.85);
+        // 3) OUTER WISPY TENDRILS (35%)
+        // Explosive red/orange streaks extending far out
+        const zDir = Math.random() > 0.5 ? 1 : -1;
+        const zRatio = Math.pow(Math.random(), 0.8); 
+        const zVal = (zRatio * 2.2 + 0.2) * maxRadius;
+        z = zVal * zDir;
+        
+        const baseR = (zVal / maxRadius) * maxRadius * 1.0;
+        
+        // Extreme tendril shapes using high frequency noise
+        const tendril = Math.pow(Math.abs(Math.sin(theta * 6)), 3);
+        const rad = baseR * (0.3 + tendril * 2.0) * (Math.random() * 0.2 + 0.8);
+        
+        x = rad * Math.cos(theta) * (1 + turbulence()*2.0);
+        y = rad * Math.sin(theta) * 0.4 * (1 + turbulence()*2.0);
+        
+        finalColor.copy(cOrange).lerp(cRed, zRatio);
+        
+        pSize = Math.random() * 3.5 + 2.0; 
       }
       
-      col[i*3] = finalC.r;
-      col[i*3+1] = finalC.g;
-      col[i*3+2] = finalC.b;
-      
-      // Larger, softer particles for a seamless volumetric effect
-      // Outer gas clouds expand and become larger/diffuse
-      siz[i] = (Math.random() * 1.5 + 0.5) * (1.0 + normalizedDist * 2.5);
+      setParticle(i, x, y, z, finalColor, pSize);
     }
+    
     return { positions: pos, colors: col, sizes: siz };
-  }, [particleCount, maxRadius, ejectaColor, coreColor]);
+  }, [maxRadius]);
 
   useFrame((state, delta) => {
     if (pointsRef.current && isPlaying) {
-      pointsRef.current.rotation.z += delta * timeScale * 0.05;
-      pointsRef.current.rotation.x = Math.PI / 4; // tilt it so we can see the butterfly shape clearly
+      pointsRef.current.rotation.z += delta * timeScale * 0.02;
     }
     if (pointsRef.current) {
-      // The eventProgress scales the entire nebula
-      const expansion = Math.max(0.01, eventProgress * 2.5); // 0 to 2.5 scale
+      const expansion = Math.max(0.01, eventProgress * 3.0); 
       pointsRef.current.scale.set(expansion, expansion, expansion);
     }
   });
 
   return (
-    <group>
-      <mesh>
-        <sphereGeometry args={[0.08, 32, 32]} />
-        <meshBasicMaterial color={coreColor} />
-      </mesh>
-      {/* Searing core glare */}
-      <pointLight intensity={2.0} distance={50} color={coreColor} />
+    <group rotation={[Math.PI / 5, Math.PI / 4, 0]}>
+      <pointLight intensity={3.0} distance={maxRadius * 2} color="#ffffff" />
+      <pointLight intensity={1.5} distance={maxRadius * 4} color="#ff88cc" />
       <points ref={pointsRef}>
         <bufferGeometry>
           <bufferAttribute attach="attributes-position" count={positions.length / 3} array={positions} itemSize={3} />
@@ -261,11 +291,11 @@ function BipolarPlanetaryNebula({ params, eventProgress }: { params: Record<stri
           map={particleTexture!}
           vertexColors 
           transparent 
-          opacity={0.35} 
+          opacity={0.05} 
           blending={THREE.AdditiveBlending} 
           depthWrite={false} 
           sizeAttenuation 
-          alphaTest={0.01}
+          alphaTest={0.001}
         />
       </points>
     </group>

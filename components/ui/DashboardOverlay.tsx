@@ -66,7 +66,6 @@ const SLIDER_CONFIGS: Record<string, SliderConfig[]> = {
     { key: "galaxyRadius", label: "Galaxy Radius", min: 10, max: 100, step: 1, unit: "kly", description: "Radius of the primary galaxy" },
     { key: "particleCount", label: "Particle Count", min: 1000, max: 50000, step: 1000, unit: "", description: "Number of stellar bodies" },
     { key: "spinRate", label: "Spin Rate", min: 0.0, max: 0.2, step: 0.01, unit: "rad/s", description: "Rotation speed of the galaxy" },
-    { key: "collisionProgress", label: "Collision Progress", min: 0.0, max: 1.0, step: 0.01, unit: "", description: "Progress of the galactic merger" },
   ],
   Supernova: [
     { key: "eventProgress", label: "Time Slider", min: 0.0, max: 1.0, step: 0.01, unit: "", description: "Scrub through the supernova lifecycle" },

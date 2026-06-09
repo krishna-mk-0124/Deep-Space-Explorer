@@ -10,67 +10,112 @@ interface Props {
   object: CelestialObject;
 }
 
-const shockwaveVertexShader = `
-  varying vec2 vUv;
-  varying vec3 vNormal;
+const supernovaVertexShader = `
+  uniform float uEventProgress;
+  attribute float size;
+  attribute vec3 color;
+  attribute vec3 velocity;
+  varying vec3 vColor;
+  varying float vAlphaMult;
   void main() {
-    vUv = uv;
-    vNormal = normalize(normalMatrix * normal);
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    // Determine color based on time (cools off as it expands)
+    float activeProgress = max(0.0, uEventProgress - 0.1) * 1.11;
+    
+    // Mix to deep red/black as it progresses
+    vec3 cooledColor = mix(color, vec3(0.1, 0.0, 0.0), activeProgress * 0.8);
+    vColor = cooledColor;
+    
+    // Explode outward with rapid initial expansion then deceleration
+    float expFactor = 1.0 - exp(-activeProgress * 6.0);
+    vec3 newPos = position + velocity * expFactor;
+    
+    // Fade out as it dissipates
+    vAlphaMult = 1.0 - pow(activeProgress, 2.0);
+    
+    vec4 mvPosition = modelViewMatrix * vec4(newPos, 1.0);
+    
+    // Particles get larger and more diffuse as they expand
+    gl_PointSize = size * (1.0 + activeProgress * 5.0) * (300.0 / -mvPosition.z);
+    gl_Position = projectionMatrix * mvPosition;
   }
 `;
 
-const shockwaveFragmentShader = `
-  uniform float uTime;
-  uniform float uEventProgress;
-  
-  varying vec2 vUv;
-  varying vec3 vNormal;
-
-  float rand(vec2 n) { 
-    return fract(sin(dot(n, vec2(12.9898, 4.1414))) * 43758.5453);
-  }
-  
-  float noise(vec2 p){
-    vec2 ip = floor(p);
-    vec2 u = fract(p);
-    u = u*u*(3.0-2.0*u);
-    
-    float res = mix(
-      mix(rand(ip), rand(ip+vec2(1.0,0.0)), u.x),
-      mix(rand(ip+vec2(0.0,1.0)), rand(ip+vec2(1.0,1.0)), u.x), u.y);
-    return res*res;
-  }
-
+const supernovaFragmentShader = `
+  varying vec3 vColor;
+  varying float vAlphaMult;
   void main() {
-    float activeProgress = max(0.0, uEventProgress - 0.1) * 1.11; // scales 0.1->1.0 to 0->1
-    if (activeProgress <= 0.0) discard;
-
-    vec3 viewDir = vec3(0.0, 0.0, 1.0);
-    float fresnel = pow(1.0 - max(dot(vNormal, viewDir), 0.0), 1.5);
+    vec2 coord = gl_PointCoord - vec2(0.5);
+    float dist = length(coord);
+    if (dist > 0.5) discard;
     
-    float n = noise(vUv * 20.0 + uTime * 2.0);
-    
-    vec3 hotColor = vec3(0.5, 0.8, 1.0);
-    vec3 coolColor = vec3(1.0, 0.2, 0.1);
-    
-    vec3 color = mix(hotColor, coolColor, activeProgress);
-    color += n * 0.5;
-    
-    float alpha = fresnel * (1.0 - activeProgress) * 2.0;
-    
-    gl_FragColor = vec4(color, clamp(alpha, 0.0, 1.0));
+    // Soft volume particle
+    float alpha = pow(1.0 - (dist * 2.0), 1.5);
+    gl_FragColor = vec4(vColor, alpha * 0.08 * vAlphaMult);
   }
 `;
 
 function SphericalSupernova({ eventProgress }: { eventProgress: number }) {
   const coreRef = useRef<THREE.Mesh>(null);
-  const shockwaveRef = useRef<THREE.Mesh>(null);
-  
   const { timeScale, isPlaying } = useExplorer();
   
+  const { positions, colors, sizes, velocities } = useMemo(() => {
+    // 120k volumetric particles
+    const count = 120000;
+    const pos = new Float32Array(count * 3);
+    const col = new Float32Array(count * 3);
+    const siz = new Float32Array(count);
+    const vel = new Float32Array(count * 3);
+    
+    const cWhite = new THREE.Color("#ffffff");
+    const cYellow = new THREE.Color("#ffcc22");
+    const cOrange = new THREE.Color("#ff6600");
+    const cRed = new THREE.Color("#aa1100");
+    
+    for (let i = 0; i < count; i++) {
+      const u = Math.random();
+      const v = Math.random();
+      const theta = u * 2.0 * Math.PI;
+      const phi = Math.acos(2.0 * v - 1.0);
+      
+      const r = Math.pow(Math.random(), 0.3) * 2.5; 
+      
+      const dirX = Math.sin(phi) * Math.cos(theta);
+      const dirY = Math.sin(phi) * Math.sin(theta);
+      const dirZ = Math.cos(phi);
+      
+      pos[i*3] = dirX * r;
+      pos[i*3+1] = dirY * r;
+      pos[i*3+2] = dirZ * r;
+      
+      const isShell = Math.random() > 0.8;
+      const speed = isShell ? (Math.random() * 25.0 + 35.0) : (Math.random() * 25.0 + 5.0);
+      
+      const turbX = dirX + (Math.random() - 0.5) * 0.3;
+      const turbY = dirY + (Math.random() - 0.5) * 0.3;
+      const turbZ = dirZ + (Math.random() - 0.5) * 0.3;
+      
+      const length = Math.sqrt(turbX*turbX + turbY*turbY + turbZ*turbZ);
+      
+      vel[i*3] = (turbX / length) * speed;
+      vel[i*3+1] = (turbY / length) * speed;
+      vel[i*3+2] = (turbZ / length) * speed;
+      
+      let finalColor = new THREE.Color();
+      if (speed > 40) finalColor.copy(cWhite).lerp(cYellow, Math.random());
+      else if (speed > 20) finalColor.copy(cYellow).lerp(cOrange, Math.random());
+      else finalColor.copy(cOrange).lerp(cRed, Math.random());
+      
+      col[i*3] = finalColor.r;
+      col[i*3+1] = finalColor.g;
+      col[i*3+2] = finalColor.b;
+      
+      siz[i] = Math.random() * 2.5 + 1.5;
+    }
+    
+    return { positions: pos, colors: col, sizes: siz, velocities: vel };
+  }, []);
+
   const uniforms = useMemo(() => ({
-    uTime: { value: 0 },
     uEventProgress: { value: 0 }
   }), []);
 
@@ -80,20 +125,15 @@ function SphericalSupernova({ eventProgress }: { eventProgress: number }) {
     if (isPlaying) {
       timeRef.current += delta * timeScale;
     }
-    const t = timeRef.current;
-    
-    uniforms.uTime.value = t;
     uniforms.uEventProgress.value = eventProgress;
     
     if (coreRef.current) {
       if (isPlaying) {
-        coreRef.current.rotation.y = t * 0.5;
+        coreRef.current.rotation.y = timeRef.current * 0.5;
       }
-      
-      // Core dynamics
       if (eventProgress < 0.1) {
-        // Red supergiant phase
-        const scale = 2.0 + Math.sin(t * 5) * 0.05; // pulsating
+        // Red supergiant phase pulsating
+        const scale = 2.0 + Math.sin(timeRef.current * 5) * 0.05; 
         coreRef.current.scale.set(scale, scale, scale);
       } else {
         // Collapsed remnant
@@ -101,41 +141,38 @@ function SphericalSupernova({ eventProgress }: { eventProgress: number }) {
         coreRef.current.scale.set(remScale, remScale, remScale);
       }
     }
-    
-    if (shockwaveRef.current) {
-      // Shockwave expands rapidly after collapse
-      const expansion = Math.max(0.0, eventProgress - 0.1) * 30.0;
-      const scale = 0.5 + expansion;
-      shockwaveRef.current.scale.set(scale, scale, scale);
-    }
   });
 
   return (
     <group>
-      {/* Central Star / Remnant */}
       <mesh ref={coreRef}>
         <sphereGeometry args={[1, 32, 32]} />
-        <meshBasicMaterial color={eventProgress < 0.1 ? "#ff5500" : "#4fc3f7"} />
+        <meshBasicMaterial color={eventProgress < 0.1 ? "#ff5500" : "#ffffff"} />
       </mesh>
       
-      {/* Intense glow right at the moment of collapse */}
-      {eventProgress > 0.09 && eventProgress < 0.15 && (
-        <pointLight intensity={50 * (1.0 - (eventProgress - 0.09)*15)} distance={100} color="#ffffff" />
+      {eventProgress > 0.09 && eventProgress < 0.20 && (
+        <pointLight intensity={80 * (1.0 - (eventProgress - 0.09)*9)} distance={150} color="#ffffff" />
       )}
-
-      {/* Expanding Shockwave Bubble */}
-      <mesh ref={shockwaveRef}>
-        <sphereGeometry args={[1, 64, 64]} />
-        <shaderMaterial 
-          vertexShader={shockwaveVertexShader}
-          fragmentShader={shockwaveFragmentShader}
-          uniforms={uniforms}
-          transparent
-          depthWrite={false}
-          blending={THREE.AdditiveBlending}
-          side={THREE.DoubleSide}
-        />
-      </mesh>
+      
+      {/* Volumetric GPU particle explosion */}
+      {eventProgress >= 0.1 && (
+        <points>
+          <bufferGeometry>
+            <bufferAttribute attach="attributes-position" args={[positions, 3]} />
+            <bufferAttribute attach="attributes-color" args={[colors, 3]} />
+            <bufferAttribute attach="attributes-size" args={[sizes, 1]} />
+            <bufferAttribute attach="attributes-velocity" args={[velocities, 3]} />
+          </bufferGeometry>
+          <shaderMaterial 
+            vertexShader={supernovaVertexShader}
+            fragmentShader={supernovaFragmentShader}
+            uniforms={uniforms}
+            transparent
+            depthWrite={false}
+            blending={THREE.AdditiveBlending}
+          />
+        </points>
+      )}
     </group>
   );
 }

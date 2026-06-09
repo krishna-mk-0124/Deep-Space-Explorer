@@ -205,7 +205,7 @@ function AccretionDisk({
   lensStrength: number;
   isTDE: boolean;
 }) {
-  const particleCount = Math.min(Math.floor(density), 3500);
+  const particleCount = Math.min(Math.floor(density * 15), 50000);
   const diskRef = useRef<THREE.Points>(null);
   const shaderRef = useRef<THREE.ShaderMaterial>(null);
 
@@ -248,18 +248,19 @@ function AccretionDisk({
     } else {
       // STANDARD ACCRETION DISK
       for (let i = 0; i < particleCount; i++) {
-        const t = i / particleCount;
-        const radius = bhRadius * 1.35 + t * 5.0;
+        // Use an exponential curve to concentrate particles closer to the inner edge
+        const t = Math.pow(i / particleCount, 1.3); 
+        const radius = bhRadius * 1.2 + t * (bhRadius * 3.5);
         const angle = Math.random() * Math.PI * 2;
-        const spread = 0.12 * (1.0 - t * 0.5);
+        const spread = 0.18 * (1.0 - t * 0.4) * bhRadius;
 
         positions[i * 3] = Math.cos(angle) * radius + (Math.random() - 0.5) * spread;
-        positions[i * 3 + 1] = (Math.random() - 0.5) * spread * 0.35;
+        positions[i * 3 + 1] = (Math.random() - 0.5) * spread * 0.4;
         positions[i * 3 + 2] = Math.sin(angle) * radius + (Math.random() - 0.5) * spread;
 
-        const brightness = 0.92 - t * 0.45;
-        colors[i * 3] = Math.min(baseColor.r * brightness + t * 0.28, 1.0);
-        colors[i * 3 + 1] = baseColor.g * brightness * 0.32;
+        const brightness = 0.95 - t * 0.6;
+        colors[i * 3] = Math.min(baseColor.r * brightness + t * 0.3, 1.0);
+        colors[i * 3 + 1] = baseColor.g * brightness * 0.35;
         colors[i * 3 + 2] = baseColor.b * brightness * 0.05;
       }
     }
@@ -310,30 +311,6 @@ function AccretionDisk({
   );
 }
 
-function PhotonRing({ mass }: { mass: number }) {
-  const meshRef = useRef<THREE.Mesh>(null);
-  const { timeScale, isPlaying } = useExplorer();
-
-  useFrame((_, delta) => {
-    if (meshRef.current && isPlaying) {
-      meshRef.current.rotation.y += delta * 0.045 * timeScale;
-      meshRef.current.rotation.z += delta * 0.02 * timeScale;
-    }
-  });
-  const r = 1.5 * Math.pow(mass / 80, 0.4) * 2.6;
-  return (
-    <mesh ref={meshRef}>
-      <torusGeometry args={[r * 1.55, 0.03, 6, 96]} />
-      <meshBasicMaterial
-        color="#ff8c00"
-        transparent
-        opacity={0.5}
-        blending={THREE.AdditiveBlending}
-        depthWrite={false}
-      />
-    </mesh>
-  );
-}
 
 export default function ParticleBlackHole({ params, object }: Props) {
   const lensShaderRef = useRef<THREE.ShaderMaterial>(null);
@@ -434,9 +411,6 @@ export default function ParticleBlackHole({ params, object }: Props) {
         <sphereGeometry args={[bhRadius, 32, 32]} />
         <meshBasicMaterial color="#000000" />
       </mesh>
-
-      {/* Photon sphere ring */}
-      <PhotonRing mass={mass} />
 
       {/* Accretion disk with Gravitational Lensing & Doppler Beaming */}
       <AccretionDisk

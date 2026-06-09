@@ -77,8 +77,14 @@ const diskVertexShader = `
     pos.x = position.x * c - position.z * s;
     pos.z = position.x * s + position.z * c;
     
-    // Turbulence / vertical oscillation
-    pos.y += sin(uTime * 4.0 + r * 6.0) * 0.08 * min(1.0, r / uBhRadius);
+    // Swirling fluid streams and turbulence to mimic Cinematic flow
+    float stream = sin(angle * 4.0 + r * 12.0 - uTime * 3.0);
+    pos.y += stream * 0.12 * min(1.0, r / uBhRadius);
+    
+    // Radial clumping to form distinct accretion arms
+    float clump = cos(angle * 2.0 + r * 5.0);
+    pos.x += pos.x * clump * 0.04;
+    pos.z += pos.z * clump * 0.04;
 
     vLocalPosition = pos;
     vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
@@ -132,19 +138,21 @@ const diskFragmentShader = `
     float distToCenter = length(coord);
     if (distToCenter > 0.5) discard;
     
-    float alpha = smoothstep(0.5, 0.1, distToCenter);
+    // Gaussian-like soft particle falloff for gaseous feel
+    float alpha = exp(-pow(distToCenter * 3.5, 2.0));
 
-    // Relativistic Doppler Beaming (Balanced formula)
-    float beaming = pow((1.0 + 0.55 * vCosTheta) / (1.0 - 0.55 * vCosTheta), 1.2);
+    // Intense Relativistic Doppler Beaming (matches Cinematic contrast)
+    float beaming = pow((1.0 + 0.7 * vCosTheta) / (1.0 - 0.65 * vCosTheta), 1.6);
     
-    // Temperature gradient
+    // Extreme temperature gradient near the event horizon
     float r = length(vLocalPosition.xz);
-    float temp = smoothstep(12.0, 1.5, r);
-    vec3 hotColor = mix(vColor, vec3(1.0, 0.95, 0.85), temp * 0.9);
+    float temp = smoothstep(9.0, 1.2, r);
+    vec3 hotColor = mix(vColor, vec3(1.0, 0.98, 0.9), temp * 0.95);
     
-    vec3 color = hotColor * beaming * (1.0 + 0.3 * sin(uTime * 18.0 + r * 15.0));
+    // Add micro-flickering to the streams
+    vec3 color = hotColor * beaming * (1.0 + 0.4 * sin(uTime * 25.0 + r * 20.0));
     
-    gl_FragColor = vec4(color, alpha * 0.9);
+    gl_FragColor = vec4(color, alpha * 0.85);
   }
 `;
 

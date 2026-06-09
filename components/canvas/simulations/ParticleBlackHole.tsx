@@ -92,16 +92,24 @@ const diskVertexShader = `
       // Smoothly split the back of the disk into top and bottom arches based on their actual vertical position
       float flip = pos.y >= 0.0 ? 1.0 : -1.0;
       
-      // Bias the screen-space direction heavily vertically to form the continuous halo arches
-      vec2 screenDir = vec2(relPos.x * 0.3, (abs(relPos.z) * 1.4 + abs(relPos.y)) * flip);
+      // Bias the screen-space direction extremely heavily vertically to form the continuous halo arches
+      vec2 screenDir = vec2(relPos.x * 0.15, (abs(relPos.z) * 1.8 + abs(relPos.y)) * flip);
       float d = length(screenDir);
       
       if (d > 0.01) {
         screenDir = normalize(screenDir);
-        float er = uBhRadius * 1.8 * uLensingStrength; // Einstein ring radius
-        float shift = (er * er) / (d + uBhRadius * 0.2);
-        shift = min(shift, uBhRadius * 3.5); 
-        mvPosition.xy += screenDir * shift * smoothstep(0.0, uBhRadius * 2.5, -relPos.z);
+        float er = uBhRadius * 2.0 * uLensingStrength; // Einstein ring radius
+        float shift = (er * er) / (d + uBhRadius * 0.15);
+        shift = min(shift, uBhRadius * 4.5); 
+        
+        float lensPower = smoothstep(0.0, uBhRadius * 3.0, -relPos.z);
+        mvPosition.xy += screenDir * shift * lensPower;
+        
+        // CRITICAL FIX: Pull the lensed particles forward in Z-space!
+        // Without this, the particles are correctly lensed in XY space but are still physically 
+        // behind the black hole, so the solid event horizon's depth buffer occludes them!
+        // This occlusion creates the flat "Saturn" look.
+        mvPosition.z += (abs(relPos.z) + uBhRadius * 1.5) * lensPower;
       }
     }
 

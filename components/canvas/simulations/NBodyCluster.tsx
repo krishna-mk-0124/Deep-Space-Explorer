@@ -143,6 +143,10 @@ export default function NBodyCluster({ params, object }: Props) {
   const posRef = useRef<Float32Array>(null!);
   const velRef = useRef<Float32Array>(null!);
   const colRef = useRef<Float32Array>(null!);
+  
+  const billboardMatRef = useRef<THREE.MeshBasicMaterial>(null);
+  const glowMatRef = useRef<THREE.MeshBasicMaterial>(null);
+  const fadeAlphaRef = useRef(0);
 
   useMemo(() => {
     posRef.current = new Float32Array(positions);
@@ -160,6 +164,16 @@ export default function NBodyCluster({ params, object }: Props) {
       timeRef.current += delta * timeScale;
     }
     const dt = Math.min(delta, 0.033) * timeScale * (isPlaying ? 1.0 : 0.0);
+    
+    // Smooth cinematic fade-in over 2 seconds
+    if (fadeAlphaRef.current < 1.0) {
+      fadeAlphaRef.current = Math.min(1.0, fadeAlphaRef.current + delta * 0.5);
+      const easeFade = 1.0 - Math.pow(1.0 - fadeAlphaRef.current, 3.0); // cubic out ease
+      
+      if (billboardMatRef.current) billboardMatRef.current.opacity = easeFade * 0.85;
+      if (glowMatRef.current) glowMatRef.current.opacity = easeFade * 0.1;
+    }
+    const fade = fadeAlphaRef.current;
     
     const pos = posRef.current;
     const vel = velRef.current;
@@ -208,12 +222,12 @@ export default function NBodyCluster({ params, object }: Props) {
       dummy.updateMatrix();
       meshRef.current.setMatrixAt(i, dummy.matrix);
 
-      // Scintillation brightness twinkling
+      // Scintillation brightness twinkling with smooth fade-in
       const twinkle = isPlaying ? (0.8 + Math.sin(timeRef.current * 4.5 + phases[i]) * 0.2) : 1.0;
       tempColor.setRGB(
-        colors[ix] * twinkle,
-        colors[iy] * twinkle,
-        colors[iz] * twinkle
+        colors[ix] * twinkle * fade,
+        colors[iy] * twinkle * fade,
+        colors[iz] * twinkle * fade
       );
       meshRef.current.setColorAt(i, tempColor);
     }
@@ -229,9 +243,10 @@ export default function NBodyCluster({ params, object }: Props) {
         <mesh>
           <planeGeometry args={[clusterRadius * 1.5, clusterRadius * 1.5]} />
           <meshBasicMaterial
+            ref={billboardMatRef}
             map={clusterTexture}
             transparent
-            opacity={0.85}
+            opacity={0}
             blending={THREE.AdditiveBlending}
             depthWrite={false}
           />
@@ -241,7 +256,7 @@ export default function NBodyCluster({ params, object }: Props) {
       {/* Volumetric core glow fallback */}
       <mesh>
         <sphereGeometry args={[clusterRadius * 0.28, 16, 16]} />
-        <meshBasicMaterial color={starColorInner} transparent opacity={0.1} blending={THREE.AdditiveBlending} depthWrite={false} />
+        <meshBasicMaterial ref={glowMatRef} color={starColorInner} transparent opacity={0} blending={THREE.AdditiveBlending} depthWrite={false} />
       </mesh>
 
       {/* Orbiting Stars */}

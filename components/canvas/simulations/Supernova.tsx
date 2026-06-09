@@ -183,9 +183,6 @@ function SphericalSupernova({ eventProgress }: { eventProgress: number }) {
     }
   });
 
-  // Calculate light echo alpha dynamically
-  const echoAlpha = Math.max(0, 1.0 - (eventProgress - 0.1) * 4.0) * 0.5;
-
   return (
     <group>
       <mesh ref={coreRef}>
@@ -201,25 +198,6 @@ function SphericalSupernova({ eventProgress }: { eventProgress: number }) {
       {/* Neutrino / Shock Breakout Flash */}
       {eventProgress > 0.09 && eventProgress < 0.18 && (
         <pointLight intensity={250 * (1.0 - (eventProgress - 0.09)*11)} distance={300} color="#88ccff" />
-      )}
-      
-      {/* Pre-supernova Circumstellar Material (Light Echoes) */}
-      {eventProgress > 0.1 && (
-        <group>
-          {[1.0, 1.5, 2.5].map((scale, idx) => (
-            <mesh key={idx} rotation={[Math.PI / 3 + idx * 0.2, Math.PI / 4, 0]}>
-              <ringGeometry args={[18 * scale, 18.5 * scale, 128]} />
-              <meshBasicMaterial 
-                color="#aaccff" 
-                transparent 
-                opacity={echoAlpha} 
-                side={THREE.DoubleSide} 
-                blending={THREE.AdditiveBlending}
-                depthWrite={false}
-              />
-            </mesh>
-          ))}
-        </group>
       )}
       
       {eventProgress >= 0.1 && (

@@ -2,6 +2,7 @@
 
 import { useRef, useMemo } from "react";
 import { useFrame } from "@react-three/fiber";
+import { Billboard } from "@react-three/drei";
 import * as THREE from "three";
 import { CelestialObject, useExplorer } from "@/store/explorerStore";
 
@@ -9,6 +10,117 @@ interface Props {
   params: Record<string, number | string>;
   object: CelestialObject;
 }
+
+const cinematicVertexShader = `
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+const cinematicFragmentShader = `
+  uniform float uTime;
+  uniform float uEventProgress;
+  varying vec2 vUv;
+
+  float hash12(vec2 p) {
+    vec3 p3  = fract(vec3(p.xyx) * .1031);
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
+  }
+
+  float noise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash12(i + vec2(0.0,0.0)), hash12(i + vec2(1.0,0.0)), u.x),
+               mix(hash12(i + vec2(0.0,1.0)), hash12(i + vec2(1.0,1.0)), u.x), u.y);
+  }
+
+  float fbm(vec2 x) {
+    float v = 0.0;
+    float a = 0.5;
+    mat2 rot = mat2(cos(0.5), sin(0.5), -sin(0.5), cos(0.5));
+    for (int i = 0; i < 5; ++i) {
+      v += a * noise(x);
+      x = rot * x * 2.0 + vec2(100.0);
+      a *= 0.5;
+    }
+    return v;
+  }
+
+  float pattern(vec2 p, out vec2 q, out vec2 r) {
+    q.x = fbm(p + vec2(0.0,0.0) + uTime*0.05);
+    q.y = fbm(p + vec2(5.2,1.3) + uTime*0.05);
+    
+    r.x = fbm(p + 4.0*q + vec2(1.7,9.2) + uTime*0.08);
+    r.y = fbm(p + 4.0*q + vec2(8.3,2.8) + uTime*0.08);
+    
+    return fbm(p + 4.0*r);
+  }
+
+  float spiral(vec2 p, vec2 c, float swirl, float size) {
+    vec2 v = p - c;
+    float r = length(v);
+    float a = atan(v.y, v.x);
+    
+    float arms = sin(a * 2.0 + r * swirl);
+    
+    float core = exp(-r * r * 40.0 / size);
+    float disk = exp(-r * 3.0 / size) * max(0.0, arms);
+    
+    return core * 2.0 + disk * 1.5;
+  }
+
+  void main() {
+    vec2 p = vUv * 2.0 - 1.0;
+    
+    float orbitAngle = uEventProgress * 3.14159 * 1.5;
+    float sep = 0.6 * (1.0 - pow(uEventProgress, 1.5));
+    sep = max(sep, 0.01);
+    
+    vec2 c1 = vec2(cos(orbitAngle) * sep, sin(orbitAngle) * sep * 0.4);
+    vec2 c2 = -c1;
+    
+    vec2 q, r;
+    float warpIntensity = 0.2 + uEventProgress * 1.5; 
+    float n = pattern(p * 4.0, q, r);
+    
+    vec2 warpedP = p + (r - 0.5) * warpIntensity;
+    
+    float swirl1 = -8.0 - uEventProgress * 10.0;
+    float swirl2 = -8.0 - uEventProgress * 10.0;
+    
+    float g1 = spiral(warpedP, c1, swirl1, 1.0);
+    float g2 = spiral(warpedP, c2, swirl2, 1.0);
+    
+    float density = g1 + g2;
+    density *= (n * 1.8);
+    
+    vec3 col1 = vec3(0.05, 0.4, 0.9); 
+    vec3 col2 = vec3(0.9, 0.3, 0.05); 
+    vec3 coreCol = vec3(1.0, 0.95, 0.8);
+    vec3 dustCol = vec3(0.01, 0.005, 0.005);
+    
+    float d1 = length(warpedP - c1);
+    float d2 = length(warpedP - c2);
+    float mixRatio = d1 / (d1 + d2 + 0.0001);
+    vec3 baseCol = mix(col1, col2, mixRatio);
+    
+    vec3 finalColor = mix(dustCol, baseCol, smoothstep(0.0, 0.3, density));
+    finalColor = mix(finalColor, coreCol, smoothstep(0.6, 1.5, density));
+    
+    float hAlphaNoise = fbm(p * 15.0 + uTime * 0.1);
+    float spark = smoothstep(0.6, 1.0, hAlphaNoise) * smoothstep(0.2, 0.8, density);
+    vec3 hAlphaCol = vec3(1.0, 0.1, 0.5);
+    finalColor += hAlphaCol * spark * 2.0;
+    
+    float mask = smoothstep(1.0, 0.4, length(p));
+    
+    gl_FragColor = vec4(finalColor, mask * min(1.0, density * 2.0));
+  }
+`;
 
 const vertexShader = `
   uniform float uTime;
@@ -333,6 +445,7 @@ export default function GalaxyCollision({ params, object }: Props) {
   const starMatRef = useRef<THREE.ShaderMaterial>(null);
   const dustMatRef = useRef<THREE.ShaderMaterial>(null);
   const burstMatRef = useRef<THREE.ShaderMaterial>(null);
+  const cinematicMatRef = useRef<THREE.ShaderMaterial>(null);
 
   useFrame((state, delta) => {
     if (isPlaying) {
@@ -351,6 +464,10 @@ export default function GalaxyCollision({ params, object }: Props) {
       burstMatRef.current.uniforms.uTime.value = timeRef.current;
       burstMatRef.current.uniforms.uEventProgress.value = eventProgress;
     }
+    if (cinematicMatRef.current) {
+      cinematicMatRef.current.uniforms.uTime.value = timeRef.current;
+      cinematicMatRef.current.uniforms.uEventProgress.value = eventProgress;
+    }
   });
 
   return (
@@ -359,27 +476,29 @@ export default function GalaxyCollision({ params, object }: Props) {
         <pointLight intensity={2.0} distance={30} color="#ffffff" />
       )}
       
-      {/* 1. Base Stars Mesh */}
-      <points renderOrder={1}>
-        <bufferGeometry>
-          <bufferAttribute attach="attributes-position" count={stars.pos.length / 3} array={stars.pos} itemSize={3} />
-          <bufferAttribute attach="attributes-isG1" count={stars.isG1.length} array={stars.isG1} itemSize={1} />
-          <bufferAttribute attach="attributes-size" count={stars.sizes.length} array={stars.sizes} itemSize={1} />
-          <bufferAttribute attach="attributes-color" count={stars.colors.length / 3} array={stars.colors} itemSize={3} />
-        </bufferGeometry>
-        <shaderMaterial
-          ref={starMatRef}
-          vertexShader={vertexShader}
-          fragmentShader={fragmentShader}
-          uniforms={uniforms}
-          transparent
-          depthWrite={false}
-          blending={THREE.AdditiveBlending}
-        />
-      </points>
+      {/* 1. Base Stars Mesh (Centaurus A Only) */}
+      {isCentaurusA && (
+        <points renderOrder={1}>
+          <bufferGeometry>
+            <bufferAttribute attach="attributes-position" count={stars.pos.length / 3} array={stars.pos} itemSize={3} />
+            <bufferAttribute attach="attributes-isG1" count={stars.isG1.length} array={stars.isG1} itemSize={1} />
+            <bufferAttribute attach="attributes-size" count={stars.sizes.length} array={stars.sizes} itemSize={1} />
+            <bufferAttribute attach="attributes-color" count={stars.colors.length / 3} array={stars.colors} itemSize={3} />
+          </bufferGeometry>
+          <shaderMaterial
+            ref={starMatRef}
+            vertexShader={vertexShader}
+            fragmentShader={fragmentShader}
+            uniforms={uniforms}
+            transparent
+            depthWrite={false}
+            blending={THREE.AdditiveBlending}
+          />
+        </points>
+      )}
 
-      {/* 2. Dust Lane Mesh (Centaurus A & Galaxy Collisions) */}
-      {dust.pos.length > 0 && (
+      {/* 2. Dust Lane Mesh (Centaurus A Only) */}
+      {isCentaurusA && dust.pos.length > 0 && (
         <points renderOrder={2}>
           <bufferGeometry>
             <bufferAttribute attach="attributes-position" count={dust.pos.length / 3} array={dust.pos} itemSize={3} />
@@ -399,25 +518,22 @@ export default function GalaxyCollision({ params, object }: Props) {
         </points>
       )}
 
-      {/* 3. Starburst Nodes (Galactic Collision) */}
-      {!isCentaurusA && starbursts.pos.length > 0 && (
-        <points renderOrder={3}>
-          <bufferGeometry>
-            <bufferAttribute attach="attributes-position" count={starbursts.pos.length / 3} array={starbursts.pos} itemSize={3} />
-            <bufferAttribute attach="attributes-isG1" count={starbursts.isG1.length} array={starbursts.isG1} itemSize={1} />
-            <bufferAttribute attach="attributes-size" count={starbursts.sizes.length} array={starbursts.sizes} itemSize={1} />
-            <bufferAttribute attach="attributes-color" count={starbursts.colors.length / 3} array={starbursts.colors} itemSize={3} />
-          </bufferGeometry>
-          <shaderMaterial
-            ref={burstMatRef}
-            vertexShader={vertexShader}
-            fragmentShader={starburstFragmentShader}
-            uniforms={{...uniforms, uIsStarburst: { value: 1.0 }}}
-            transparent
-            depthWrite={false}
-            blending={THREE.AdditiveBlending}
-          />
-        </points>
+      {/* Cinematic Volumetric Shader (Generic Collisions) */}
+      {!isCentaurusA && (
+        <Billboard follow={true}>
+          <mesh>
+            <planeGeometry args={[20, 20]} />
+            <shaderMaterial
+              ref={cinematicMatRef}
+              vertexShader={cinematicVertexShader}
+              fragmentShader={cinematicFragmentShader}
+              uniforms={uniforms}
+              transparent
+              depthWrite={false}
+              blending={THREE.AdditiveBlending}
+            />
+          </mesh>
+        </Billboard>
       )}
     </group>
   );

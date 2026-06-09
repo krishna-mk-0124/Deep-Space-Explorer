@@ -211,7 +211,7 @@ export default function DashboardOverlay() {
             <PhysicsSlider
               key={config.key}
               config={config}
-              value={sliderValues[config.key] ?? Number(selectedObject.simulationParams[config.key]) ?? config.min}
+              value={sliderValues[config.key] ?? (selectedObject.simulationParams[config.key] !== undefined ? Number(selectedObject.simulationParams[config.key]) : config.min)}
               onChange={(v) => setSliderValue(config.key, v)}
               accent={accent}
             />

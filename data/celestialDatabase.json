@@ -2440,32 +2440,6 @@
     }
   },
   {
-    "id": "andromeda-collision",
-    "name": "Andromeda-Milky Way Collision",
-    "type": "GalaxyCollision",
-    "mass": 1000000000,
-    "radius": 100000,
-    "color": "#ff5500",
-    "description": "A simulated collision between the Milky Way and Andromeda galaxies, occurring 4 billion years in the future.",
-    "encyclopedia": {
-      "overview": "The Andromeda-Milky Way Collision is a predicted galactic merger expected to occur in approximately 4.5 billion years between the Milky Way and the Andromeda Galaxy. Currently separated by 2.5 million light-years, the two galaxies are rushing toward each other at 110 kilometers per second, pulled by their mutual gravitational attraction.",
-      "physicsHighlights": "This is a massive N-body gravitational interaction. Dynamic tidal forces will tear spiral arms into long tidal tails, compress interstellar gas clouds to trigger starburst events, and eventually merge both supermassive black holes.",
-      "interestingFacts": [
-        "Stars will almost certainly not collide during the merger.",
-        "The merger will transform both spiral galaxies into a giant elliptical galaxy.",
-        "Earth's night sky will be dominated by a spectacular glowing cosmic display."
-      ],
-      "classificationData": {
-        "Type": "Galactic Merger",
-        "Distance": "2.5 Million LY",
-        "Timeframe": "+4.5 Billion Years"
-      }
-    },
-    "simulationParams": {
-      "eventProgress": 0
-    }
-  },
-  {
     "id": "betelgeuse-supernova",
     "name": "Betelgeuse Supernova",
     "type": "Supernova",

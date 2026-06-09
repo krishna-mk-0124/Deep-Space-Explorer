@@ -140,9 +140,29 @@ function SphericalSupernova({ eventProgress }: { eventProgress: number }) {
   );
 }
 
+function createSoftParticleTexture() {
+  if (typeof document === "undefined") return null;
+  const canvas = document.createElement("canvas");
+  canvas.width = 64;
+  canvas.height = 64;
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gradient.addColorStop(0, "rgba(255, 255, 255, 1.0)");
+    gradient.addColorStop(0.2, "rgba(255, 255, 255, 0.8)");
+    gradient.addColorStop(0.5, "rgba(255, 255, 255, 0.2)");
+    gradient.addColorStop(1, "rgba(255, 255, 255, 0.0)");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 64, 64);
+  }
+  return new THREE.CanvasTexture(canvas);
+}
+
 function BipolarPlanetaryNebula({ params, eventProgress }: { params: Record<string, number | string>, eventProgress: number }) {
   const pointsRef = useRef<THREE.Points>(null);
   const { timeScale, isPlaying } = useExplorer();
+  
+  const particleTexture = useMemo(() => createSoftParticleTexture(), []);
   
   const particleCount = Number(params.particleCount) || 20000;
   const maxRadius = Number(params.maxRadius) || 15;
@@ -150,49 +170,63 @@ function BipolarPlanetaryNebula({ params, eventProgress }: { params: Record<stri
   const coreColor = (params.coreColor as string) || "#ffffff";
   
   const { positions, colors, sizes } = useMemo(() => {
-    // Increase visual density
-    const actualCount = particleCount * 2;
+    // Dramatically increase density for volumetric look
+    const actualCount = particleCount * 3;
     const pos = new Float32Array(actualCount * 3);
     const col = new Float32Array(actualCount * 3);
     const siz = new Float32Array(actualCount);
     
-    const colorObj = new THREE.Color(ejectaColor);
-    const whiteColor = new THREE.Color(coreColor);
-    
     for (let i = 0; i < actualCount; i++) {
-      // Butterfly shape: dense at the center waist, flaring out into two wide cones.
       const u = Math.random();
       const theta = 2.0 * Math.PI * u; 
       
       let zDist = (Math.random() - 0.5) * 2.0; 
-      // Emphasize the outer lobes
-      zDist = Math.sign(zDist) * Math.pow(Math.abs(zDist), 0.6); 
+      // Push particles towards the outer lobes to create the dual-cone look
+      zDist = Math.sign(zDist) * Math.pow(Math.abs(zDist), 0.5); 
       
-      const radius = maxRadius * Math.pow(Math.random(), 0.5); // Spread out more evenly
+      // Base radius equation for an hourglass/butterfly shape
+      const baseR = 0.05 + Math.pow(Math.abs(zDist), 2.5) * 3.0; 
       
-      // The waist is pinched: radius in xy plane should be small when zDist is small
-      const pinch = 0.05 + Math.pow(Math.abs(zDist), 1.8) * 1.5;
+      // Most particles form the dense "walls" of the cavity, fewer fill the interior
+      const isWall = Math.random() > 0.25;
+      const wallThickness = 0.2;
+      const rScale = isWall ? (1.0 - Math.random() * wallThickness) : Math.pow(Math.random(), 0.5); 
       
-      const x = radius * pinch * Math.cos(theta);
-      const y = radius * pinch * Math.sin(theta);
-      const z = radius * zDist * 1.2; // elongate along Z
+      const radius = maxRadius * baseR * rScale;
       
-      // Add turbulent noise to the wings
-      const turbulence = 1.0 + (Math.random() - 0.5) * 0.3;
+      // Add azimuthal structure (folds and filaments) to the wings
+      const fold = Math.sin(theta * 3.0) * 0.35 + Math.cos(theta * 7.0) * 0.15;
+      
+      const x = radius * (1.0 + fold) * Math.cos(theta);
+      // Squash Y to flatten the butterfly rather than a perfect cylinder
+      const y = radius * (1.0 + fold) * Math.sin(theta) * 0.5; 
+      const z = zDist * maxRadius * 2.0; 
+      
+      // Fine turbulent noise for chaotic gas clouds
+      const turbulence = 1.0 + (Math.random() - 0.5) * 0.25;
       
       pos[i*3] = x * turbulence;
       pos[i*3+1] = y * turbulence;
       pos[i*3+2] = z * turbulence;
       
-      // Color interpolation: hot inner core, cooler/dustier outer wings
-      const distRatio = Math.sqrt(x*x + y*y + z*z) / (maxRadius * 1.5);
-      const mixedColor = new THREE.Color().lerpColors(whiteColor, colorObj, Math.min(1.0, distRatio * 1.5));
-      col[i*3] = mixedColor.r;
-      col[i*3+1] = mixedColor.g;
-      col[i*3+2] = mixedColor.b;
+      // Realistic Color Mapping: Intense hot core -> standard ejecta -> dark cooling edges
+      const distFromCenter = Math.sqrt(x*x + y*y + z*z);
+      const normalizedDist = Math.min(1.0, distFromCenter / (maxRadius * 2.5));
       
-      // Point size variation
-      siz[i] = Math.random() * 0.25 + 0.05;
+      let finalC;
+      if (normalizedDist < 0.15) {
+        finalC = new THREE.Color(coreColor).lerp(new THREE.Color(ejectaColor), normalizedDist / 0.15);
+      } else {
+        finalC = new THREE.Color(ejectaColor).lerp(new THREE.Color("#1a0000"), (normalizedDist - 0.15) / 0.85);
+      }
+      
+      col[i*3] = finalC.r;
+      col[i*3+1] = finalC.g;
+      col[i*3+2] = finalC.b;
+      
+      // Larger, softer particles for a seamless volumetric effect
+      // Outer gas clouds expand and become larger/diffuse
+      siz[i] = (Math.random() * 1.5 + 0.5) * (1.0 + normalizedDist * 2.5);
     }
     return { positions: pos, colors: col, sizes: siz };
   }, [particleCount, maxRadius, ejectaColor, coreColor]);
@@ -212,16 +246,27 @@ function BipolarPlanetaryNebula({ params, eventProgress }: { params: Record<stri
   return (
     <group>
       <mesh>
-        <sphereGeometry args={[0.05, 16, 16]} />
+        <sphereGeometry args={[0.08, 32, 32]} />
         <meshBasicMaterial color={coreColor} />
       </mesh>
+      {/* Searing core glare */}
+      <pointLight intensity={2.0} distance={50} color={coreColor} />
       <points ref={pointsRef}>
         <bufferGeometry>
           <bufferAttribute attach="attributes-position" count={positions.length / 3} array={positions} itemSize={3} />
           <bufferAttribute attach="attributes-color" count={colors.length / 3} array={colors} itemSize={3} />
           <bufferAttribute attach="attributes-size" count={sizes.length} array={sizes} itemSize={1} />
         </bufferGeometry>
-        <pointsMaterial vertexColors transparent opacity={0.6} blending={THREE.AdditiveBlending} depthWrite={false} sizeAttenuation />
+        <pointsMaterial 
+          map={particleTexture!}
+          vertexColors 
+          transparent 
+          opacity={0.35} 
+          blending={THREE.AdditiveBlending} 
+          depthWrite={false} 
+          sizeAttenuation 
+          alphaTest={0.01}
+        />
       </points>
     </group>
   );

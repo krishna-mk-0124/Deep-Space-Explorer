@@ -16,7 +16,6 @@ const vertexShader = `
   uniform float uIsCentaurusA;
   uniform float uIsStarburst;
   
-  attribute vec3 localPosition;
   attribute float isG1;
   attribute float size;
   attribute vec3 color;
@@ -25,7 +24,7 @@ const vertexShader = `
   
   void main() {
     vColor = color;
-    vec3 pos = localPosition;
+    vec3 pos = position;
     
     if (uIsCentaurusA > 0.5) {
       // Centaurus A (static rotation)
@@ -328,7 +327,7 @@ export default function GalaxyCollision({ params, object }: Props) {
       {/* 1. Base Stars Mesh */}
       <points renderOrder={1}>
         <bufferGeometry>
-          <bufferAttribute attach="attributes-localPosition" count={stars.pos.length / 3} array={stars.pos} itemSize={3} />
+          <bufferAttribute attach="attributes-position" count={stars.pos.length / 3} array={stars.pos} itemSize={3} />
           <bufferAttribute attach="attributes-isG1" count={stars.isG1.length} array={stars.isG1} itemSize={1} />
           <bufferAttribute attach="attributes-size" count={stars.sizes.length} array={stars.sizes} itemSize={1} />
           <bufferAttribute attach="attributes-color" count={stars.colors.length / 3} array={stars.colors} itemSize={3} />
@@ -348,7 +347,7 @@ export default function GalaxyCollision({ params, object }: Props) {
       {isCentaurusA && dust.pos.length > 0 && (
         <points renderOrder={2}>
           <bufferGeometry>
-            <bufferAttribute attach="attributes-localPosition" count={dust.pos.length / 3} array={dust.pos} itemSize={3} />
+            <bufferAttribute attach="attributes-position" count={dust.pos.length / 3} array={dust.pos} itemSize={3} />
             <bufferAttribute attach="attributes-isG1" count={dust.isG1.length} array={dust.isG1} itemSize={1} />
             <bufferAttribute attach="attributes-size" count={dust.sizes.length} array={dust.sizes} itemSize={1} />
             <bufferAttribute attach="attributes-color" count={dust.colors.length / 3} array={dust.colors} itemSize={3} />
@@ -369,7 +368,7 @@ export default function GalaxyCollision({ params, object }: Props) {
       {!isCentaurusA && starbursts.pos.length > 0 && (
         <points renderOrder={3}>
           <bufferGeometry>
-            <bufferAttribute attach="attributes-localPosition" count={starbursts.pos.length / 3} array={starbursts.pos} itemSize={3} />
+            <bufferAttribute attach="attributes-position" count={starbursts.pos.length / 3} array={starbursts.pos} itemSize={3} />
             <bufferAttribute attach="attributes-isG1" count={starbursts.isG1.length} array={starbursts.isG1} itemSize={1} />
             <bufferAttribute attach="attributes-size" count={starbursts.sizes.length} array={starbursts.sizes} itemSize={1} />
             <bufferAttribute attach="attributes-color" count={starbursts.colors.length / 3} array={starbursts.colors} itemSize={3} />

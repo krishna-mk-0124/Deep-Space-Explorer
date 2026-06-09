@@ -43,38 +43,33 @@ const vertexShader = `
       
       vec3 myCenter = isG1 > 0.5 ? c1 : c2;
       
+      // All particles (Stars, Dust, Starbursts) undergo the exact same unified physics
+      // so they remain structurally locked together as the galaxies deform!
+      
+      float spinAngle = uTime * 0.2 + uEventProgress * 3.0;
+      mat2 spinRot = mat2(cos(spinAngle), -sin(spinAngle), sin(spinAngle), cos(spinAngle));
+      pos.xz = spinRot * pos.xz;
+      
+      float r = length(pos);
+      float tidalForce = smoothstep(1.5, 7.0, r) * uEventProgress;
+      
+      float tailAngle = -tidalForce * 2.5; 
+      mat2 tailRot = mat2(cos(tailAngle), -sin(tailAngle), sin(tailAngle), cos(tailAngle));
+      pos.xz = tailRot * pos.xz;
+      
+      pos.xz *= 1.0 + tidalForce * 2.5;
+      pos.y *= 1.0 + tidalForce * 0.8; 
+      
+      pos += myCenter;
+      
       if (uIsStarburst > 0.5) {
-         // Starbursts spawn at the collision interface (origin) and violently expand
-         float bloom = smoothstep(0.4, 1.0, uEventProgress);
-         pos *= bloom * 1.5;
+         // Starbursts dynamically ignite and pulse as the collision intensifies
+         float bloom = smoothstep(0.2, 1.0, uEventProgress);
          
-         // Add chaotic turbulence to starbursts
-         pos.x += sin(uTime * 3.0 + pos.y) * 0.5 * bloom;
-         pos.y += cos(uTime * 4.0 + pos.z) * 0.5 * bloom;
+         pos.x += sin(uTime * 3.0 + pos.y) * 0.2 * bloom;
+         pos.y += cos(uTime * 4.0 + pos.z) * 0.2 * bloom;
          
-         vColor *= bloom; 
-      } else {
-         // Normal Stars - Tidal Shear
-         // Galaxies spin naturally
-         float spinAngle = uTime * 0.2 + uEventProgress * 3.0;
-         mat2 spinRot = mat2(cos(spinAngle), -sin(spinAngle), sin(spinAngle), cos(spinAngle));
-         pos.xz = spinRot * pos.xz;
-         
-         float r = length(pos);
-         // Tidal force increases massively at the edges and as event progresses
-         float tidalForce = smoothstep(1.5, 7.0, r) * uEventProgress;
-         
-         // Outer stars get flung into sweeping tails trailing the orbit
-         float tailAngle = -tidalForce * 2.5; 
-         mat2 tailRot = mat2(cos(tailAngle), -sin(tailAngle), sin(tailAngle), cos(tailAngle));
-         pos.xz = tailRot * pos.xz;
-         
-         // Exponential stretching for the tails (Antennae effect)
-         pos.xz *= 1.0 + tidalForce * 2.5;
-         pos.y *= 1.0 + tidalForce * 0.8; // Puff up the disk slightly during collision
-         
-         // Bind to the respective galactic core
-         pos += myCenter;
+         vColor *= (0.5 + bloom * 1.5); 
       }
     }
     
@@ -143,15 +138,15 @@ export default function GalaxyCollision({ params, object }: Props) {
     const starSize = new Float32Array(starCount);
     const starCol = new Float32Array(starCount * 3);
 
-    // 2. DUST DATA (Centaurus A only)
-    const dustCount = isCentaurusA ? 40000 : 0;
+    // 2. DUST DATA
+    const dustCount = isCentaurusA ? 40000 : 30000;
     const dustPos = new Float32Array(dustCount * 3);
     const dustIsG1 = new Float32Array(dustCount);
     const dustSize = new Float32Array(dustCount);
     const dustCol = new Float32Array(dustCount * 3);
 
     // 3. STARBURST DATA (Collisions only)
-    const burstCount = isCentaurusA ? 0 : 5000;
+    const burstCount = isCentaurusA ? 0 : 8000;
     const burstPos = new Float32Array(burstCount * 3);
     const burstIsG1 = new Float32Array(burstCount);
     const burstSize = new Float32Array(burstCount);
@@ -230,53 +225,93 @@ export default function GalaxyCollision({ params, object }: Props) {
       }
     } else {
       // --- GENERIC GALAXY COLLISION KINEMATICS ---
-      for (let i = 0; i < starCount; i++) {
-        const isFirstGalaxy = i % 2 === 0;
+      // Build photorealistic logarithmic spiral galaxies with distinct structure
+      
+      let sIdx = 0, dIdx = 0, bIdx = 0;
+      
+      const generateSpiralGalaxy = (
+        isFirstGalaxy, 
+        starCountPerGalaxy, 
+        dustCountPerGalaxy, 
+        burstCountPerGalaxy
+      ) => {
         const baseColor = isFirstGalaxy ? color1 : color2;
+        // Apply majestic asymmetrical tilts
+        const euler = isFirstGalaxy 
+          ? new THREE.Euler(Math.PI / 4, Math.PI / 6, Math.PI / 8) 
+          : new THREE.Euler(-Math.PI / 6, -Math.PI / 3, 0);
 
-        const r = Math.random() * 6 + 0.2;
-        const theta = r * 1.5 + Math.random() * Math.PI * 2; 
-        const y = (Math.random() - 0.5) * (1.5 / r); 
-        
-        // Stars are stored in their native local coords
-        // The vertex shader will dynamically orbit and shear them.
-        const x = r * Math.cos(theta);
-        const z = r * Math.sin(theta);
-        
-        starPos[i * 3] = x; starPos[i * 3 + 1] = y; starPos[i * 3 + 2] = z;
-        starIsG1[i] = isFirstGalaxy ? 1.0 : 0.0;
-        starSize[i] = Math.random() * 0.3 + 0.05;
+        const generatePoint = (radiusScale, ySpread, isDust) => {
+          const numArms = 2;
+          const armOffset = (Math.floor(Math.random() * numArms) * Math.PI * 2) / numArms;
+          const isBulge = Math.random() < 0.25;
+          
+          let r, theta;
+          if (isBulge) {
+             r = Math.pow(Math.random(), 0.5) * 1.5 * radiusScale;
+             theta = Math.random() * Math.PI * 2;
+          } else {
+             r = (Math.random() * 5 + 1.0) * radiusScale;
+             const winding = 1.3;
+             theta = r * winding + armOffset;
+             const noiseSpread = isDust ? 0.3 : 0.6;
+             theta += (Math.random() - 0.5) * noiseSpread;
+          }
+          
+          let y = (Math.random() - 0.5) * ySpread;
+          if (isBulge) y *= 2.5; 
 
-        const coreFactor = 1.0 - Math.min(1.0, r / 3);
-        const c = baseColor.clone().lerp(coreColor, coreFactor);
-        starCol[i * 3] = c.r; starCol[i * 3 + 1] = c.g; starCol[i * 3 + 2] = c.b;
-      }
+          const vec = new THREE.Vector3(r * Math.cos(theta), y, r * Math.sin(theta));
+          vec.applyEuler(euler);
+          return { vec, r, isBulge };
+        };
 
-      // --- STARBURST NODES (H II Regions) ---
-      for (let i = 0; i < burstCount; i++) {
-        const u = Math.random();
-        const v = Math.random();
-        const r = Math.pow(Math.random(), 2.5) * 5; 
-        const theta = u * Math.PI * 2;
-        const phi = Math.acos(2.0 * v - 1.0);
-        
-        const x = r * Math.sin(phi) * Math.cos(theta);
-        const y = r * Math.sin(phi) * Math.sin(theta) * 0.3; 
-        const z = r * Math.cos(phi);
-        
-        const offset = Math.random() > 0.5 ? 2.0 : -2.0;
-        
-        burstPos[i * 3] = x + offset;
-        burstPos[i * 3 + 1] = y;
-        burstPos[i * 3 + 2] = z;
-        burstIsG1[i] = 1.0; 
+        // 1. STARS
+        for (let i = 0; i < starCountPerGalaxy; i++) {
+          const { vec, r } = generatePoint(1.0, 0.4, false);
+          starPos[sIdx * 3] = vec.x; starPos[sIdx * 3 + 1] = vec.y; starPos[sIdx * 3 + 2] = vec.z;
+          starIsG1[sIdx] = isFirstGalaxy ? 1.0 : 0.0;
+          starSize[sIdx] = Math.random() * 0.2 + 0.05;
 
-        burstSize[i] = Math.random() * 0.2 + 0.05;
-        
-        const isPink = Math.random() > 0.3;
-        const c = isPink ? hAlphaColor : coreColor;
-        burstCol[i*3] = c.r; burstCol[i*3+1] = c.g; burstCol[i*3+2] = c.b;
-      }
+          const coreFactor = 1.0 - Math.min(1.0, r / 2.5);
+          const c = baseColor.clone().lerp(coreColor, coreFactor);
+          starCol[sIdx * 3] = c.r; starCol[sIdx * 3 + 1] = c.g; starCol[sIdx * 3 + 2] = c.b;
+          sIdx++;
+        }
+
+        // 2. DUST LANES
+        for (let i = 0; i < dustCountPerGalaxy; i++) {
+          const { vec } = generatePoint(1.1, 0.5, true);
+          
+          // Offset dust slightly into the leading edge of the spiral arms
+          const offsetAngle = Math.atan2(vec.z, vec.x) + 0.15;
+          const rr = Math.sqrt(vec.x*vec.x + vec.z*vec.z);
+          const dx = rr * Math.cos(offsetAngle);
+          const dz = rr * Math.sin(offsetAngle);
+          
+          dustPos[dIdx * 3] = dx; dustPos[dIdx * 3 + 1] = vec.y; dustPos[dIdx * 3 + 2] = dz;
+          dustIsG1[dIdx] = isFirstGalaxy ? 1.0 : 0.0;
+          dustSize[dIdx] = Math.random() * 2.5 + 1.0;
+          dustCol[dIdx * 3] = dustColor.r; dustCol[dIdx * 3 + 1] = dustColor.g; dustCol[dIdx * 3 + 2] = dustColor.b;
+          dIdx++;
+        }
+
+        // 3. H-ALPHA STARBURST REGIONS
+        for (let i = 0; i < burstCountPerGalaxy; i++) {
+          const { vec } = generatePoint(1.2, 0.3, false);
+          burstPos[bIdx * 3] = vec.x; burstPos[bIdx * 3 + 1] = vec.y; burstPos[bIdx * 3 + 2] = vec.z;
+          burstIsG1[bIdx] = isFirstGalaxy ? 1.0 : 0.0;
+          burstSize[bIdx] = Math.random() * 0.25 + 0.1;
+          
+          const isPink = Math.random() > 0.35;
+          const c = isPink ? hAlphaColor : coreColor;
+          burstCol[bIdx * 3] = c.r; burstCol[bIdx * 3 + 1] = c.g; burstCol[bIdx * 3 + 2] = c.b;
+          bIdx++;
+        }
+      };
+
+      generateSpiralGalaxy(true, starCount / 2, dustCount / 2, burstCount / 2);
+      generateSpiralGalaxy(false, starCount / 2, dustCount / 2, burstCount / 2);
     }
 
     return {
@@ -343,8 +378,8 @@ export default function GalaxyCollision({ params, object }: Props) {
         />
       </points>
 
-      {/* 2. Dust Lane Mesh (Centaurus A) */}
-      {isCentaurusA && dust.pos.length > 0 && (
+      {/* 2. Dust Lane Mesh (Centaurus A & Galaxy Collisions) */}
+      {dust.pos.length > 0 && (
         <points renderOrder={2}>
           <bufferGeometry>
             <bufferAttribute attach="attributes-position" count={dust.pos.length / 3} array={dust.pos} itemSize={3} />

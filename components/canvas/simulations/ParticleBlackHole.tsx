@@ -89,28 +89,37 @@ const diskVertexShader = `
     vec3 relPos = mvPosition.xyz - bhViewPos.xyz;
 
     if (relPos.z < 0.0) { 
-      // Smoothly split the back of the disk into top and bottom arches based on their actual vertical position
+      // Depth behind the black hole
+      float depth = -relPos.z;
+      vec2 screenPos = relPos.xy;
+      
+      // Split disk into top and bottom halos
       float flip = pos.y >= 0.0 ? 1.0 : -1.0;
       
-      // Bias the screen-space direction extremely heavily vertically to form the continuous halo arches
-      vec2 screenDir = vec2(relPos.x * 0.15, (abs(relPos.z) * 1.8 + abs(relPos.y)) * flip);
-      float d = length(screenDir);
+      // Base Einstein ring radius
+      float er = uBhRadius * 1.5 * uLensingStrength;
       
-      if (d > 0.01) {
-        screenDir = normalize(screenDir);
-        float er = uBhRadius * 2.0 * uLensingStrength; // Einstein ring radius
-        float shift = (er * er) / (d + uBhRadius * 0.15);
-        shift = min(shift, uBhRadius * 4.5); 
-        
-        float lensPower = smoothstep(0.0, uBhRadius * 3.0, -relPos.z);
-        mvPosition.xy += screenDir * shift * lensPower;
-        
-        // CRITICAL FIX: Pull the lensed particles forward in Z-space!
-        // Without this, the particles are correctly lensed in XY space but are still physically 
-        // behind the black hole, so the solid event horizon's depth buffer occludes them!
-        // This occlusion creates the flat "Saturn" look.
-        mvPosition.z += (abs(relPos.z) + uBhRadius * 1.5) * lensPower;
-      }
+      // Preserve the thick structure of the accretion disk in the lensed arch
+      float rDist = max(0.0, (r / uBhRadius) - 1.0);
+      float archRadius = er + rDist * 0.35 * uBhRadius;
+      
+      // Map x-coordinate to the circular arch equation: y^2 = R^2 - x^2
+      float targetX = clamp(relPos.x, -archRadius, archRadius);
+      float targetY = sqrt(max(0.0, archRadius * archRadius - targetX * targetX)) * flip;
+      vec2 targetPos = vec2(targetX, targetY);
+      
+      // Maximum lensing occurs when the particle is fully behind the black hole
+      float lensPower = smoothstep(0.0, uBhRadius * 2.0, depth);
+      // Fade out lensing for particles that are far to the sides (not obscured by the BH silhouette)
+      float lateralFalloff = smoothstep(uBhRadius * 2.5, uBhRadius * 0.5, abs(relPos.x));
+      
+      vec2 finalPos = mix(screenPos, targetPos, lensPower * lateralFalloff);
+      
+      mvPosition.xy = bhViewPos.xy + finalPos;
+      
+      // PULL FORWARD: Bring lensed particles to the front of the depth buffer 
+      // so the solid event horizon sphere doesn't clip the gorgeous halo arches!
+      mvPosition.z += (depth + uBhRadius * 2.0) * lensPower * lateralFalloff;
     }
 
     vWorldPosition = (modelMatrix * vec4(pos, 1.0)).xyz;
@@ -259,12 +268,12 @@ function AccretionDisk({
     } else {
       // STANDARD ACCRETION DISK
       for (let i = 0; i < particleCount; i++) {
-        // Use a severe exponential curve to heavily pack particles against the inner event horizon
-        const t = Math.pow(i / particleCount, 2.5); 
-        const radius = bhRadius * 1.02 + t * (bhRadius * 4.5);
+        // Soft exponential curve so it looks like a glowing torus, not a razor-thin pipe
+        const t = Math.pow(i / particleCount, 1.4); 
+        const radius = bhRadius * 1.05 + t * (bhRadius * 4.0);
         const angle = Math.random() * Math.PI * 2;
-        // Inner particles have almost no spread to form a razor-sharp bright ring; outer particles spread into a thick cloud
-        const spread = 0.25 * t * bhRadius;
+        // Base spread ensures the inner edge has physical thickness
+        const spread = bhRadius * 0.12 + 0.25 * t * bhRadius;
 
         positions[i * 3] = Math.cos(angle) * radius + (Math.random() - 0.5) * spread;
         positions[i * 3 + 1] = (Math.random() - 0.5) * spread * 0.6;

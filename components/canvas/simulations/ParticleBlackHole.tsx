@@ -62,9 +62,9 @@ const diskVertexShader = `
     vec3 pos = position;
     float r = length(pos.xz);
     
-    // Keplerian velocity profile
-    float v = sqrt(uMass / max(r, 0.1)); 
-    float speed = v * 0.15; 
+    // Relativistic velocity profile: Extreme gravity shear near the event horizon
+    float distRatio = uBhRadius / max(r, uBhRadius * 1.01);
+    float speed = (0.15 + pow(distRatio, 3.0) * 2.5) * sqrt(uMass / 80.0);
     if (uIsTDE > 0.5) {
       speed *= 0.4;
     }
@@ -77,14 +77,9 @@ const diskVertexShader = `
     pos.x = position.x * c - position.z * s;
     pos.z = position.x * s + position.z * c;
     
-    // Swirling fluid streams and turbulence to mimic Cinematic flow
-    float stream = sin(angle * 4.0 + r * 12.0 - uTime * 3.0);
-    pos.y += stream * 0.12 * min(1.0, r / uBhRadius);
-    
-    // Radial clumping to form distinct accretion arms
-    float clump = cos(angle * 2.0 + r * 5.0);
-    pos.x += pos.x * clump * 0.04;
-    pos.z += pos.z * clump * 0.04;
+    // Smooth fluid stream turbulence
+    float stream = sin(angle * 6.0 + r * 8.0 - uTime * 4.0);
+    pos.y += stream * 0.08 * distRatio;
 
     vLocalPosition = pos;
     vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
@@ -256,19 +251,21 @@ function AccretionDisk({
     } else {
       // STANDARD ACCRETION DISK
       for (let i = 0; i < particleCount; i++) {
-        // Use an exponential curve to concentrate particles closer to the inner edge
-        const t = Math.pow(i / particleCount, 1.3); 
-        const radius = bhRadius * 1.2 + t * (bhRadius * 3.5);
+        // Use a severe exponential curve to heavily pack particles against the inner event horizon
+        const t = Math.pow(i / particleCount, 2.5); 
+        const radius = bhRadius * 1.02 + t * (bhRadius * 4.5);
         const angle = Math.random() * Math.PI * 2;
-        const spread = 0.18 * (1.0 - t * 0.4) * bhRadius;
+        // Inner particles have almost no spread to form a razor-sharp bright ring; outer particles spread into a thick cloud
+        const spread = 0.25 * t * bhRadius;
 
         positions[i * 3] = Math.cos(angle) * radius + (Math.random() - 0.5) * spread;
-        positions[i * 3 + 1] = (Math.random() - 0.5) * spread * 0.4;
+        positions[i * 3 + 1] = (Math.random() - 0.5) * spread * 0.6;
         positions[i * 3 + 2] = Math.sin(angle) * radius + (Math.random() - 0.5) * spread;
 
-        const brightness = 0.95 - t * 0.6;
-        colors[i * 3] = Math.min(baseColor.r * brightness + t * 0.3, 1.0);
-        colors[i * 3 + 1] = baseColor.g * brightness * 0.35;
+        // Inner edge is blindingly hot, outer edge is cool and dark
+        const brightness = 1.0 - Math.pow(t, 0.7);
+        colors[i * 3] = Math.min(baseColor.r * brightness + (1.0 - t) * 0.5, 1.0);
+        colors[i * 3 + 1] = baseColor.g * brightness * 0.45;
         colors[i * 3 + 2] = baseColor.b * brightness * 0.05;
       }
     }

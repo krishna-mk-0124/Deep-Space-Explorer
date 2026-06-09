@@ -28,7 +28,7 @@ export default function SimulationTimeline() {
 
       // If it's an event (GalaxyCollision or Supernova), auto-advance progress
       if (selectedObject && (selectedObject.type === "GalaxyCollision" || selectedObject.type === "Supernova")) {
-        const currentProgress = Number(sliderValues.eventProgress) ?? 0.0;
+        const currentProgress = sliderValues.eventProgress !== undefined ? Number(sliderValues.eventProgress) : 0.0;
         // Advance progress: loops at 1.0, takes about 25 seconds at 1x speed
         const nextProgress = (currentProgress + delta * 0.04 * timeScale) % 1.0;
         setSliderValue("eventProgress", Number(nextProgress.toFixed(3)));
@@ -44,7 +44,7 @@ export default function SimulationTimeline() {
   if (!selectedObject) return null;
 
   const isEvent = selectedObject.type === "GalaxyCollision" || selectedObject.type === "Supernova";
-  const eventProgress = Number(sliderValues.eventProgress) ?? 0.0;
+  const eventProgress = sliderValues.eventProgress !== undefined ? Number(sliderValues.eventProgress) : 0.0;
 
   // Format running simulation time
   const formatTime = () => {

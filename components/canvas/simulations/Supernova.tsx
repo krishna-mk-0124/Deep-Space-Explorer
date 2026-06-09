@@ -18,24 +18,45 @@ const supernovaVertexShader = `
   varying vec3 vColor;
   varying float vAlphaMult;
   void main() {
-    // Determine color based on time (cools off as it expands)
     float activeProgress = max(0.0, uEventProgress - 0.1) * 1.11;
+    float speed = length(velocity);
     
-    // Mix to deep red/black as it progresses
-    vec3 cooledColor = mix(color, vec3(0.1, 0.0, 0.0), activeProgress * 0.8);
-    vColor = cooledColor;
+    // Blackbody thermodynamic cooling:
+    // Faster, denser knots (Rayleigh-Taylor fingers) retain heat longer.
+    float coolingRate = 1.0 + (25.0 / (speed + 1.0)); 
+    float t = activeProgress * coolingRate;
     
-    // Explode outward with rapid initial expansion then deceleration
-    float expFactor = 1.0 - exp(-activeProgress * 6.0);
+    vec3 cBlue = vec3(0.5, 0.8, 1.0);
+    vec3 cWhite = vec3(1.0, 1.0, 1.0);
+    vec3 cYellow = vec3(1.0, 0.8, 0.2);
+    vec3 cOrange = vec3(1.0, 0.4, 0.0);
+    vec3 cRed = vec3(0.3, 0.0, 0.0);
+    
+    vec3 currentC;
+    if (t < 0.1) {
+       currentC = mix(cBlue, cWhite, t / 0.1);
+    } else if (t < 0.3) {
+       currentC = mix(cWhite, cYellow, (t - 0.1) / 0.2);
+    } else if (t < 0.6) {
+       currentC = mix(cYellow, cOrange, (t - 0.3) / 0.3);
+    } else if (t < 1.0) {
+       currentC = mix(cOrange, cRed, (t - 0.6) / 0.4);
+    } else {
+       currentC = mix(cRed, vec3(0.0), clamp((t - 1.0) / 0.5, 0.0, 1.0));
+    }
+    
+    // Mix the inherent particle color with the global thermodynamic curve
+    vColor = mix(color, currentC, min(activeProgress * 4.0, 1.0));
+    
+    // Sedov-Taylor expansion phase (sweeping up interstellar medium causes deceleration)
+    float k = 4.0;
+    float expFactor = (1.0 - exp(-activeProgress * k)) / k;
     vec3 newPos = position + velocity * expFactor;
     
-    // Fade out as it dissipates
     vAlphaMult = 1.0 - pow(activeProgress, 2.0);
     
     vec4 mvPosition = modelViewMatrix * vec4(newPos, 1.0);
-    
-    // Particles get larger and more diffuse as they expand
-    gl_PointSize = size * (1.0 + activeProgress * 5.0) * (300.0 / -mvPosition.z);
+    gl_PointSize = size * (1.0 + activeProgress * 15.0) * (300.0 / -mvPosition.z);
     gl_Position = projectionMatrix * mvPosition;
   }
 `;
@@ -54,22 +75,28 @@ const supernovaFragmentShader = `
   }
 `;
 
+// 3D Curl/Sine Noise for Rayleigh-Taylor Instabilities
+function get3DNoise(x: number, y: number, z: number) {
+  const n1 = Math.sin(x*2.0) * Math.sin(y*2.0) * Math.sin(z*2.0);
+  const n2 = Math.sin(x*4.0 + 1.0) * Math.sin(y*4.0 - 2.0) * Math.sin(z*4.0 + 3.0);
+  const n3 = Math.sin(x*8.0 - 1.5) * Math.sin(y*8.0 + 0.5) * Math.sin(z*8.0 - 1.0);
+  return n1 * 0.6 + n2 * 0.3 + n3 * 0.1;
+}
+
 function SphericalSupernova({ eventProgress }: { eventProgress: number }) {
   const coreRef = useRef<THREE.Mesh>(null);
   const { timeScale, isPlaying } = useExplorer();
   
   const { positions, colors, sizes, velocities } = useMemo(() => {
-    // 120k volumetric particles
-    const count = 120000;
+    // 150k particles for massive physical depth
+    const count = 150000;
     const pos = new Float32Array(count * 3);
     const col = new Float32Array(count * 3);
     const siz = new Float32Array(count);
     const vel = new Float32Array(count * 3);
     
+    const cBlue = new THREE.Color("#88ccff");
     const cWhite = new THREE.Color("#ffffff");
-    const cYellow = new THREE.Color("#ffcc22");
-    const cOrange = new THREE.Color("#ff6600");
-    const cRed = new THREE.Color("#aa1100");
     
     for (let i = 0; i < count; i++) {
       const u = Math.random();
@@ -87,12 +114,18 @@ function SphericalSupernova({ eventProgress }: { eventProgress: number }) {
       pos[i*3+1] = dirY * r;
       pos[i*3+2] = dirZ * r;
       
-      const isShell = Math.random() > 0.8;
-      const speed = isShell ? (Math.random() * 25.0 + 35.0) : (Math.random() * 25.0 + 5.0);
+      // Rayleigh-Taylor Instabilities
+      // The shockwave tears through the stellar envelope creating dense, fast-moving fingers of heavy elements
+      const clump = get3DNoise(dirX * 3.0, dirY * 3.0, dirZ * 3.0);
+      const finger = Math.max(0.0, clump * 2.5); // Sharp, distinct fingers
       
-      const turbX = dirX + (Math.random() - 0.5) * 0.3;
-      const turbY = dirY + (Math.random() - 0.5) * 0.3;
-      const turbZ = dirZ + (Math.random() - 0.5) * 0.3;
+      const isShell = Math.random() > 0.7;
+      // The fingers blast out at up to 70 units/sec, standard ejecta at 15
+      const speed = isShell ? (Math.random() * 10.0 + 15.0 + finger * 55.0) : (Math.random() * 8.0 + 2.0);
+      
+      const turbX = dirX + (Math.random() - 0.5) * 0.4;
+      const turbY = dirY + (Math.random() - 0.5) * 0.4;
+      const turbZ = dirZ + (Math.random() - 0.5) * 0.4;
       
       const length = Math.sqrt(turbX*turbX + turbY*turbY + turbZ*turbZ);
       
@@ -101,15 +134,14 @@ function SphericalSupernova({ eventProgress }: { eventProgress: number }) {
       vel[i*3+2] = (turbZ / length) * speed;
       
       let finalColor = new THREE.Color();
-      if (speed > 40) finalColor.copy(cWhite).lerp(cYellow, Math.random());
-      else if (speed > 20) finalColor.copy(cYellow).lerp(cOrange, Math.random());
-      else finalColor.copy(cOrange).lerp(cRed, Math.random());
+      if (speed > 50) finalColor.copy(cBlue).lerp(cWhite, Math.random());
+      else finalColor.copy(cWhite);
       
       col[i*3] = finalColor.r;
       col[i*3+1] = finalColor.g;
       col[i*3+2] = finalColor.b;
       
-      siz[i] = Math.random() * 2.5 + 1.5;
+      siz[i] = Math.random() * 2.0 + 0.5;
     }
     
     return { positions: pos, colors: col, sizes: siz, velocities: vel };
@@ -132,29 +164,51 @@ function SphericalSupernova({ eventProgress }: { eventProgress: number }) {
         coreRef.current.rotation.y = timeRef.current * 0.5;
       }
       if (eventProgress < 0.1) {
-        // Red supergiant phase pulsating
-        const scale = 2.0 + Math.sin(timeRef.current * 5) * 0.05; 
+        // Red supergiant phase - convective bubbling
+        const scale = 2.0 + Math.sin(timeRef.current * 8) * 0.08 + Math.cos(timeRef.current * 5) * 0.05; 
         coreRef.current.scale.set(scale, scale, scale);
       } else {
-        // Collapsed remnant
-        const remScale = Math.max(0.05, 0.5 - (eventProgress * 0.4));
+        // Core collapse leaves a tiny neutron star remnant
+        const remScale = Math.max(0.01, 0.5 - (eventProgress * 1.5));
         coreRef.current.scale.set(remScale, remScale, remScale);
       }
     }
   });
 
+  // Calculate light echo alpha dynamically
+  const echoAlpha = Math.max(0, 1.0 - (eventProgress - 0.1) * 4.0) * 0.5;
+
   return (
     <group>
       <mesh ref={coreRef}>
-        <sphereGeometry args={[1, 32, 32]} />
-        <meshBasicMaterial color={eventProgress < 0.1 ? "#ff5500" : "#ffffff"} />
+        <sphereGeometry args={[1, 64, 64]} />
+        <meshBasicMaterial color={eventProgress < 0.1 ? "#ff3300" : "#ffffff"} />
       </mesh>
       
-      {eventProgress > 0.09 && eventProgress < 0.20 && (
-        <pointLight intensity={80 * (1.0 - (eventProgress - 0.09)*9)} distance={150} color="#ffffff" />
+      {/* Neutrino / Shock Breakout Flash */}
+      {eventProgress > 0.09 && eventProgress < 0.18 && (
+        <pointLight intensity={150 * (1.0 - (eventProgress - 0.09)*11)} distance={200} color="#88ccff" />
       )}
       
-      {/* Volumetric GPU particle explosion */}
+      {/* Pre-supernova Circumstellar Material (Light Echoes) */}
+      {eventProgress > 0.1 && (
+        <group>
+          {[1.0, 1.5, 2.5].map((scale, idx) => (
+            <mesh key={idx} rotation={[Math.PI / 3 + idx * 0.2, Math.PI / 4, 0]}>
+              <ringGeometry args={[18 * scale, 18.5 * scale, 128]} />
+              <meshBasicMaterial 
+                color="#aaccff" 
+                transparent 
+                opacity={echoAlpha} 
+                side={THREE.DoubleSide} 
+                blending={THREE.AdditiveBlending}
+                depthWrite={false}
+              />
+            </mesh>
+          ))}
+        </group>
+      )}
+      
       {eventProgress >= 0.1 && (
         <points>
           <bufferGeometry>

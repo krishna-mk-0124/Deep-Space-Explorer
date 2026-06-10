@@ -8,8 +8,6 @@ import DashboardOverlay from "@/components/ui/DashboardOverlay";
 import SimulationTimeline from "@/components/ui/SimulationTimeline";
 import NarrationOverlay from "@/components/ui/NarrationOverlay";
 
-import OdometerOverlay from "@/components/ui/OdometerOverlay";
-
 const SceneContainer = dynamic(
   () => import("@/components/canvas/SceneContainer"),
   { ssr: false }
@@ -40,7 +38,6 @@ export default function ExplorePage() {
           </Suspense>
           <NarrationOverlay />
           <SimulationTimeline />
-          <OdometerOverlay />
         </div>
 
         {/* Right Dashboard Overlay */}
